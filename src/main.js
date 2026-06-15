@@ -162,7 +162,12 @@ async function startFrontend() {
   return new Promise((resolve, reject) => {
     log('Starting Next.js frontend...');
 
-    const node = process.platform === 'win32' ? 'node.exe' : 'node';
+    // Use the Node binary bundled alongside the app (extraResources → node/)
+    // Fallback to system node if not found (dev mode)
+    const bundledNode = path.join(RESOURCES, 'node', process.platform === 'win32' ? 'node.exe' : 'node');
+    const node = fs.existsSync(bundledNode) ? bundledNode : process.execPath;
+    log(`Using node: ${node}`);
+
     const env  = {
       ...process.env,
       PORT:                   String(FRONTEND_PORT),

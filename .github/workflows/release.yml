@@ -45,7 +45,21 @@ jobs:
         with:
           python-version: "3.11"
 
-      # ── 6. Download portable Postgres binaries ────────────────────────────
+      # ── 6a. Download portable Node.js binary ─────────────────────────────
+      - name: Download portable Node.js
+        shell: pwsh
+        run: |
+          $NODE_VERSION = "20.14.0"
+          $URL = "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-x64.zip"
+          $ZIP = "$env:TEMP\node.zip"
+          Write-Host "Downloading Node.js ${NODE_VERSION}..."
+          Invoke-WebRequest -Uri $URL -OutFile $ZIP -UseBasicParsing
+          Expand-Archive -Path $ZIP -DestinationPath "$env:TEMP\node-extract" -Force
+          New-Item -ItemType Directory -Force -Path "vendor\node" | Out-Null
+          Copy-Item "$env:TEMP\node-extract\node-v${NODE_VERSION}-win-x64\node.exe" "vendor\node\node.exe" -Force
+          Write-Host "Node.js binary ready"
+
+      # ── 6b. Download portable Postgres binaries ───────────────────────────
       - name: Download portable PostgreSQL
         shell: pwsh
         run: |

@@ -1,7 +1,7 @@
 {
   "name": "babyai-desktop",
   "version": "1.0.0",
-  "description": "babyAI Desktop — ERP Intelligence for BUSY & Tally",
+  "description": "babyAI Desktop \u2014 ERP Intelligence for BUSY & Tally",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -13,7 +13,7 @@
   "build": {
     "appId": "com.sdc.babyai",
     "productName": "babyAI",
-    "copyright": "Copyright © 2025 SDC",
+    "copyright": "Copyright \u00a9 2025 SDC",
     "directories": {
       "output": "dist",
       "buildResources": "resources"
@@ -26,22 +26,40 @@
       {
         "from": "vendor/backend",
         "to": "backend",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "vendor/postgres",
         "to": "postgres",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "vendor/frontend",
         "to": "frontend",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "vendor/node",
+        "to": "node",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "resources/icon.ico"
     },
@@ -53,7 +71,15 @@
       "shortcutName": "babyAI"
     },
     "mac": {
-      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
       "icon": "resources/icon.icns",
       "category": "public.app-category.business"
     }
