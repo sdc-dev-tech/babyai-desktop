@@ -147,7 +147,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = Get-ChildItem dist\*.exe | Select-Object -First 1
-          Rename-Item $exe.FullName "dist\babyAI-Setup.exe"
+          Rename-Item $exe.FullName "babyAI-Setup.exe"
 
       - name: Upload installer to Release
         uses: softprops/action-gh-release@v2
