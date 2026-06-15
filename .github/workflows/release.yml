@@ -71,7 +71,7 @@ jobs:
           DESKTOP_BUILD: "1"
           NEXT_PUBLIC_API_URL: "http://127.0.0.1:8000"
         run: |
-          npm ci
+          npm install
           npx next build
           Write-Host "--- .next contents ---"
           Get-ChildItem .next -ErrorAction SilentlyContinue | Select-Object Name
