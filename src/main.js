@@ -6,6 +6,28 @@ const Store  = require('electron-store');
 
 const store = new Store();
 
+// ── Setup window ───────────────────────────────────────────────────────────
+function createSetupWindow() {
+  const win = new BrowserWindow({
+    width:           520,
+    height:          560,
+    resizable:       false,
+    titleBarStyle:   'hiddenInset',
+    backgroundColor: '#fafaf8',
+    webPreferences: {
+      preload:          path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration:  false,
+    },
+  });
+  win.loadFile(path.join(__dirname, 'setup.html'));
+  return win;
+}
+
+function isSetupComplete() {
+  return store.get('setup_done', false);
+}
+
 // ── Ports ──────────────────────────────────────────────────────────────────
 const FRONTEND_PORT = 3000;
 const BACKEND_PORT  = 8000;
@@ -111,9 +133,10 @@ async function startBackend() {
 
     const env = {
       ...process.env,
-      DATABASE_URL: `postgresql://postgres@localhost:${PG_PORT}/postgres`,
-      PORT:         String(BACKEND_PORT),
-      HOST:         '127.0.0.1',
+      DATABASE_URL:    `postgresql://postgres@localhost:${PG_PORT}/postgres`,
+      PORT:            String(BACKEND_PORT),
+      HOST:            '127.0.0.1',
+      ANTHROPIC_API_KEY: store.get('anthropic_key', ''),
     };
 
     backendProc = spawn(exe, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -186,9 +209,40 @@ async function waitAndLoad() {
 }
 
 // ── App lifecycle ──────────────────────────────────────────────────────────
-app.whenReady().then(async () => {
-  createWindow();
+// ── IPC: setup complete ────────────────────────────────────────────────────
+ipcMain.on('setup-complete', async (event, config) => {
+  store.set('anthropic_key', config.anthropic_key || '');
+  store.set('data_path',     config.data_path     || '');
+  store.set('setup_done',    true);
 
+  // Close setup window and boot the app
+  const setupWin = BrowserWindow.fromWebContents(event.sender);
+  setupWin?.close();
+
+  createWindow();
+  try {
+    await startPostgres();
+    await startBackend();
+    await startFrontend();
+    await waitAndLoad();
+  } catch (err) {
+    log(`Startup error: ${err}`);
+    dialog.showErrorBox('Startup failed', `babyAI could not start:\n\n${err.message}\n\nCheck log: ${logFile}`);
+  }
+});
+
+// ── IPC: open external URL ─────────────────────────────────────────────────
+ipcMain.on('open-external', (_, url) => shell.openExternal(url));
+
+app.whenReady().then(async () => {
+  if (!isSetupComplete()) {
+    // First run — show setup screen
+    createSetupWindow();
+    return;
+  }
+
+  // Already set up — boot straight into the app
+  createWindow();
   try {
     await startPostgres();
     await startBackend();

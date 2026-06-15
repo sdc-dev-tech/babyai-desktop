@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>babyAI — Setup</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #fafaf8;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #0a0a0a;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      -webkit-app-region: drag;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e2e1db;
+      border-radius: 16px;
+      padding: 40px 44px;
+      width: 100%;
+      max-width: 480px;
+      -webkit-app-region: no-drag;
+    }
+
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin-bottom: 6px;
+    }
+    .logo span { color: #f97316; }
+
+    .tagline {
+      font-size: 0.75rem;
+      color: #9a9a94;
+      margin-bottom: 32px;
+    }
+
+    h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+    .desc {
+      font-size: 0.78rem;
+      color: #6b6b65;
+      margin-bottom: 28px;
+      line-height: 1.55;
+    }
+
+    .section {
+      margin-bottom: 24px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #4b4b46;
+      margin-bottom: 6px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      font-family: 'SF Mono', 'Cascadia Code', monospace;
+    }
+
+    input {
+      width: 100%;
+      padding: 10px 13px;
+      border: 1px solid #e2e1db;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-family: 'SF Mono', 'Cascadia Code', monospace;
+      color: #0a0a0a;
+      background: #fafaf8;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus { border-color: #f97316; background: #fff; }
+    input.error { border-color: #ef4444; }
+
+    .hint {
+      font-size: 0.68rem;
+      color: #b0b0a8;
+      margin-top: 5px;
+    }
+    .hint a { color: #f97316; text-decoration: none; }
+
+    .divider {
+      height: 1px;
+      background: #e8e7e2;
+      margin: 24px 0;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 12px;
+      background: #0a0a0a;
+      color: #fff;
+      border: none;
+      border-radius: 9px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: opacity 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn:hover { opacity: 0.82; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .error-msg {
+      font-size: 0.72rem;
+      color: #ef4444;
+      margin-top: 12px;
+      text-align: center;
+      display: none;
+    }
+
+    .step-indicator {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 28px;
+    }
+    .step {
+      height: 3px;
+      flex: 1;
+      border-radius: 99px;
+      background: #e8e7e2;
+    }
+    .step.active { background: #f97316; }
+    .step.done   { background: #0a0a0a; }
+
+    .skip {
+      font-size: 0.72rem;
+      color: #b0b0a8;
+      text-align: center;
+      margin-top: 14px;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .skip:hover { color: #6b6b65; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">baby<span>AI</span></div>
+    <div class="tagline">ERP Intelligence — First-time setup</div>
+
+    <div class="step-indicator">
+      <div class="step active" id="s1"></div>
+      <div class="step" id="s2"></div>
+    </div>
+
+    <!-- Step 1: Anthropic API Key -->
+    <div id="step1">
+      <h2>Connect AI features</h2>
+      <p class="desc">
+        babyAI uses Claude to answer questions about your data in plain English.
+        Paste your Anthropic API key below — it's stored only on this machine.
+      </p>
+
+      <div class="section">
+        <label>Anthropic API Key</label>
+        <input
+          type="password"
+          id="anthropic_key"
+          placeholder="sk-ant-api03-…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <div class="hint">
+          Get your key at <a href="#" onclick="openExternal('https://console.anthropic.com/settings/keys')">console.anthropic.com</a>
+        </div>
+      </div>
+
+      <button class="btn" id="btn1" onclick="nextStep()">
+        Continue
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+          <path d="M2.5 6.5H10.5M7.5 3L10.5 6.5L7.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+      <div class="skip" onclick="skipAI()">Skip — I'll add this later</div>
+    </div>
+
+    <!-- Step 2: Done -->
+    <div id="step2" style="display:none;">
+      <h2>You're all set 🎉</h2>
+      <p class="desc">
+        babyAI is ready. Connect your BUSY or Tally data using the sync agent,
+        then open your dashboard.
+      </p>
+
+      <div class="section">
+        <label>Data folder</label>
+        <input
+          type="text"
+          id="data_path"
+          placeholder="C:\Users\You\Documents\BusyData"
+          autocomplete="off"
+        />
+        <div class="hint">Optional — you can set this later in Settings.</div>
+      </div>
+
+      <button class="btn" id="btn2" onclick="finish()">
+        Open babyAI
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+          <path d="M2.5 6.5H10.5M7.5 3L10.5 6.5L7.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="error-msg" id="errmsg"></div>
+  </div>
+
+  <script>
+    let currentStep = 1;
+    let config = {};
+
+    function openExternal(url) {
+      window.babyai.openExternal(url);
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('errmsg');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    function clearError() {
+      document.getElementById('errmsg').style.display = 'none';
+    }
+
+    function nextStep() {
+      clearError();
+      const key = document.getElementById('anthropic_key').value.trim();
+      if (key && !key.startsWith('sk-ant-')) {
+        document.getElementById('anthropic_key').classList.add('error');
+        showError('That doesn\'t look like a valid Anthropic key — it should start with sk-ant-');
+        return;
+      }
+      config.anthropic_key = key;
+      goToStep2();
+    }
+
+    function skipAI() {
+      config.anthropic_key = '';
+      goToStep2();
+    }
+
+    function goToStep2() {
+      document.getElementById('step1').style.display = 'none';
+      document.getElementById('step2').style.display = 'block';
+      document.getElementById('s1').className = 'step done';
+      document.getElementById('s2').className = 'step active';
+      currentStep = 2;
+    }
+
+    function finish() {
+      const dataPath = document.getElementById('data_path').value.trim();
+      config.data_path = dataPath;
+      window.babyai.saveSetup(config);
+    }
+
+    // Allow Enter key to advance
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      if (currentStep === 1) nextStep();
+      else if (currentStep === 2) finish();
+    });
+  </script>
+</body>
+</html>
