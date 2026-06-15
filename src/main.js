@@ -214,9 +214,18 @@ async function startFrontend() {
 
     const env  = {
       ...process.env,
-      PORT:                   String(FRONTEND_PORT),
-      NEXT_PUBLIC_API_URL:    `http://127.0.0.1:${BACKEND_PORT}`,
-      HOSTNAME:               '127.0.0.1',
+      PORT:                      String(FRONTEND_PORT),
+      NEXT_PUBLIC_API_URL:       `http://127.0.0.1:${BACKEND_PORT}`,
+      HOSTNAME:                  '127.0.0.1',
+      // Supabase — server-side vars not baked at build time, must be injected at runtime
+      NEXT_PUBLIC_SUPABASE_URL:  'https://hnfkplodhuycahrxqxde.supabase.co',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhuZmtwbG9kaHV5Y2FocnhxeGRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MjYyNjUsImV4cCI6MjA5NTAwMjI2NX0.4XdKy-0Txh7uVqKGdT9VA-Jn1PnqzuetqhfHrNSBg0s',
+      SUPABASE_SERVICE_ROLE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhuZmtwbG9kaHV5Y2FocnhxeGRlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTQyNjI2NSwiZXhwIjoyMDk1MDAyMjY1fQ.64U7rIeS7GhpiSOdyuPcIi_iUM9T5ahfeT4ypGo0Abk',
+      // SMTP — for confirmation emails
+      SMTP_HOST: 'smtp.gmail.com',
+      SMTP_PORT: '587',
+      SMTP_USER: 'sales.saraldyes@gmail.com',
+      SMTP_PASS: 'qdrk mvhu mazh frqq',
     };
 
     // next start via bundled node
