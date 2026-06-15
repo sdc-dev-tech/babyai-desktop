@@ -139,7 +139,7 @@ async function grantNetworkServiceAccess() {
 }
 
 async function startPostgresWindows() {
-  const pgCtl = path.join(PG_DIR, 'bin', 'pg_ctl.exe');
+  const pgExe = path.join(PG_DIR, 'bin', 'postgres.exe');
 
   // Check if service already registered
   const svcCode = await new Promise(resolve => {
@@ -150,11 +150,14 @@ async function startPostgresWindows() {
 
   if (svcCode !== 0) {
     log(`Registering Postgres as Windows service ${PG_SVC_NAME}...`);
-    await runCmd(pgCtl, [
-      'register', '-N', PG_SVC_NAME,
-      '-U', 'NT AUTHORITY\NetworkService',
-      '-D', DATA_DIR,
-      '-o', `-p ${PG_PORT}`,
+    // sc create handles built-in accounts (NetworkService) better than pg_ctl register
+    const binPath = `"${pgExe}" -D "${DATA_DIR}" -p ${PG_PORT}`;
+    await runCmd('sc', [
+      'create', PG_SVC_NAME,
+      'binPath=', binPath,
+      'obj=', 'NT AUTHORITY\NetworkService',
+      'start=', 'demand',
+      'type=', 'own',
     ]);
   }
 
