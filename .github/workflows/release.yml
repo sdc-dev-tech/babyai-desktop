@@ -142,11 +142,17 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run build:win -- --publish never
 
-      # ── 10. Create GitHub Release and upload .exe ─────────────────────────
+      # ── 10. Rename exe to fixed name then upload ──────────────────────────
+      - name: Rename installer
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist\*.exe | Select-Object -First 1
+          Rename-Item $exe.FullName "dist\babyAI-Setup.exe"
+
       - name: Upload installer to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.exe
+          files: dist/babyAI-Setup.exe
           generate_release_notes: true
           fail_on_unmatched_files: true
         env:
