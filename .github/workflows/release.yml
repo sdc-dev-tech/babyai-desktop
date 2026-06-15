@@ -98,19 +98,15 @@ jobs:
           pip install -r babyAI-backend/requirements.txt
           pip install pyinstaller
 
-          # Copy everything to C: so PyInstaller stays on one drive
-          $src  = "$PWD\babyAI-backend"
-          $tmp  = "C:\babyai-build"
-          $dist = "$PWD\vendor\backend"
+          # Copy backend source entirely to C: so all paths stay on one drive
+          Copy-Item "$PWD\babyAI-backend" "C:\babyai-src" -Recurse -Force
 
-          Copy-Item $src $tmp -Recurse -Force
-          New-Item -ItemType Directory -Force -Path $dist | Out-Null
-
-          Set-Location $tmp
+          # Run from C: with all paths on C:
+          Set-Location "C:\babyai-src"
           python -m PyInstaller `
             --onefile `
             --name api `
-            --distpath $dist `
+            --distpath "C:\babyai-dist" `
             --workpath "C:\babyai-work" `
             --specpath "C:\babyai-spec" `
             --hidden-import uvicorn.logging `
@@ -128,6 +124,9 @@ jobs:
             --collect-all starlette `
             "api\main.py"
 
+          # Copy output back to D: workspace
+          New-Item -ItemType Directory -Force -Path "D:\a\babyai-desktop\babyai-desktop\vendor\backend" | Out-Null
+          Copy-Item "C:\babyai-dist\api.exe" "D:\a\babyai-desktop\babyai-desktop\vendor\backend\api.exe" -Force
           Write-Host "Backend frozen"
 
       # ── 9. Install Electron deps & build installer ────────────────────────
