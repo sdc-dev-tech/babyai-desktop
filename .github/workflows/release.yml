@@ -99,12 +99,17 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+          $script   = (Resolve-Path "api\main.py").Path
+          $distPath = (Resolve-Path "..").Path + "\vendor\backend"
+          $workPath = (Resolve-Path ".").Path + "\build\pyinstaller-work"
+          $specPath = (Resolve-Path ".").Path + "\build\pyinstaller-spec"
+
           pyinstaller `
             --onefile `
             --name api `
-            --distpath "..\vendor\backend" `
-            --workpath ".\build\pyinstaller-work" `
-            --specpath ".\build\pyinstaller-spec" `
+            --distpath $distPath `
+            --workpath $workPath `
+            --specpath $specPath `
             --hidden-import uvicorn.logging `
             --hidden-import uvicorn.loops `
             --hidden-import uvicorn.loops.auto `
@@ -118,7 +123,7 @@ jobs:
             --hidden-import psycopg2 `
             --collect-all fastapi `
             --collect-all starlette `
-            api\main.py
+            $script
 
           Write-Host "Backend frozen"
 
