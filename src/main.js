@@ -109,62 +109,97 @@ async function grantPgDataDirAccess() {
   });
 }
 
+const PG_SVC_NAME = 'babyAI-postgres';
+
+function runCmd(cmd, args) {
+  return new Promise((resolve) => {
+    const p = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    p.stdout?.on('data', d => log(`[${cmd}]: ${d}`));
+    p.stderr?.on('data', d => log(`[${cmd}] err: ${d}`));
+    p.on('error', (e) => { log(`[${cmd}] error: ${e.message}`); resolve(1); });
+    p.on('close', resolve);
+  });
+}
+
 async function initPostgres() {
-  return new Promise((resolve, reject) => {
-    if (fs.existsSync(path.join(DATA_DIR, 'PG_VERSION'))) {
-      log('Postgres data dir already initialised');
-      return resolve();
-    }
-    // Clean up any partial/corrupt data dir before reinit
-    if (fs.existsSync(DATA_DIR)) {
-      log('Removing incomplete pgdata dir before reinit...');
-      fs.rmSync(DATA_DIR, { recursive: true, force: true });
-    }
+  if (fs.existsSync(path.join(DATA_DIR, 'PG_VERSION'))) {
+    log('Postgres data dir already initialised');
+    return;
+  }
+  if (fs.existsSync(DATA_DIR)) {
+    log('Removing incomplete pgdata dir before reinit...');
+    fs.rmSync(DATA_DIR, { recursive: true, force: true });
+  }
+  log('Initialising Postgres data directory...');
+  fs.mkdirSync(DATA_DIR, { recursive: true });
 
-    log('Initialising Postgres data directory...');
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-
-    const initdb = path.join(PG_DIR, 'bin', process.platform === 'win32' ? 'initdb.exe' : 'initdb');
-    const initOpts = process.platform === 'win32'
-      ? { username: PG_SVC_USER, password: PG_SVC_PASS, domain: '.' }
-      : {};
+  const initdb = path.join(PG_DIR, 'bin', process.platform === 'win32' ? 'initdb.exe' : 'initdb');
+  await new Promise((resolve, reject) => {
     const proc = spawn(initdb, ['-D', DATA_DIR, '-U', 'postgres', '--auth=trust', '--encoding=UTF8'], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      ...initOpts,
     });
     proc.stdout?.on('data', d => log(`initdb: ${d}`));
     proc.stderr?.on('data', d => log(`initdb err: ${d}`));
-    proc.on('error', (err) => { log(`initdb error: ${err.message}`); reject(err); });
+    proc.on('error', reject);
     proc.on('close', (code) => {
       if (code === 0) { log('Postgres data directory initialised'); resolve(); }
-      else { reject(new Error(`initdb exited with code ${code}`)); }
+      else reject(new Error(`initdb exited with code ${code}`));
     });
   });
 }
 
 // ── Start Postgres ─────────────────────────────────────────────────────────
 async function startPostgres() {
+  await ensurePgServiceUser();
+  await initPostgres();
+  await grantPgDataDirAccess();
+
   if (process.platform === 'win32') {
-    await ensurePgServiceUser();
-    await initPostgres();
-    await grantPgDataDirAccess();
+    return startPostgresWindows();
   } else {
-    await initPostgres();
+    return startPostgresUnix();
+  }
+}
+
+async function startPostgresWindows() {
+  const pgCtl = path.join(PG_DIR, 'bin', 'pg_ctl.exe');
+
+  // Check if service already registered
+  const svcCode = await new Promise(resolve => {
+    const p = spawn('sc', ['query', PG_SVC_NAME], { stdio: ['ignore', 'pipe', 'pipe'] });
+    p.on('close', resolve);
+    p.on('error', () => resolve(1));
+  });
+
+  if (svcCode !== 0) {
+    log(`Registering Postgres as Windows service ${PG_SVC_NAME}...`);
+    await runCmd(pgCtl, [
+      'register', '-N', PG_SVC_NAME,
+      '-U', `.\${PG_SVC_USER}`,
+      '-P', PG_SVC_PASS,
+      '-D', DATA_DIR,
+      '-o', `-p ${PG_PORT}`,
+    ]);
   }
 
+  return new Promise((resolve) => {
+    log(`Starting Postgres service ${PG_SVC_NAME}...`);
+    const proc = spawn('net', ['start', PG_SVC_NAME], { stdio: ['ignore', 'pipe', 'pipe'] });
+    proc.stdout?.on('data', d => log(`net start: ${d}`));
+    proc.stderr?.on('data', d => log(`net start err: ${d}`));
+    proc.on('close', (code) => {
+      log(`Postgres service start exited with code ${code}`);
+      setTimeout(resolve, 3000);
+    });
+    proc.on('error', () => setTimeout(resolve, 3000));
+  });
+}
+
+async function startPostgresUnix() {
   return new Promise((resolve, reject) => {
     log(`Starting Postgres on port ${PG_PORT}...`);
-    const pg = path.join(PG_DIR, 'bin', process.platform === 'win32' ? 'postgres.exe' : 'postgres');
-
-    const spawnOpts = { stdio: ['ignore', 'pipe', 'pipe'] };
-    if (process.platform === 'win32') {
-      spawnOpts.username = PG_SVC_USER;
-      spawnOpts.password = PG_SVC_PASS;
-      spawnOpts.domain   = '.';
-    }
-
-    pgProc = spawn(pg, ['-D', DATA_DIR, '-p', String(PG_PORT)], spawnOpts);
-
+    const pg = path.join(PG_DIR, 'bin', 'postgres');
+    pgProc = spawn(pg, ['-D', DATA_DIR, '-p', String(PG_PORT)], { stdio: ['ignore', 'pipe', 'pipe'] });
     pgProc.stdout.on('data', d => log(`pg: ${d}`));
     pgProc.stderr.on('data', d => {
       const s = d.toString();
@@ -172,8 +207,6 @@ async function startPostgres() {
       if (s.includes('database system is ready')) resolve();
     });
     pgProc.on('error', reject);
-
-    // Timeout fallback — postgres usually starts in <3s
     setTimeout(resolve, 5000);
   });
 }
@@ -336,11 +369,11 @@ app.on('before-quit', () => {
   log('Shutting down services...');
   frontendProc?.kill();
   backendProc?.kill();
-  if (pgProc) {
-    const pgctl = path.join(PG_DIR, 'bin', process.platform === 'win32' ? 'pg_ctl.exe' : 'pg_ctl');
-    execFile(pgctl, ['-D', DATA_DIR, 'stop', '-m', 'fast'], () => {
-      pgProc?.kill();
-    });
+  if (process.platform === 'win32') {
+    spawn('net', ['stop', PG_SVC_NAME], { stdio: 'ignore' });
+  } else if (pgProc) {
+    const pgctl = path.join(PG_DIR, 'bin', 'pg_ctl');
+    execFile(pgctl, ['-D', DATA_DIR, 'stop', '-m', 'fast'], () => pgProc?.kill());
   }
 });
 
