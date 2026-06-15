@@ -73,6 +73,15 @@ jobs:
         run: |
           npm ci
           npx next build
+          Write-Host "--- .next contents ---"
+          Get-ChildItem .next -ErrorAction SilentlyContinue | Select-Object Name
+          Write-Host "--- checking standalone ---"
+          if (Test-Path ".next\standalone") {
+            Write-Host "standalone EXISTS"
+          } else {
+            Write-Host "standalone MISSING — next.config output may not be set"
+            exit 1
+          }
           # Copy standalone output to vendor/frontend
           New-Item -ItemType Directory -Force -Path "..\vendor\frontend" | Out-Null
           Copy-Item ".next\standalone\*" "..\vendor\frontend" -Recurse -Force
