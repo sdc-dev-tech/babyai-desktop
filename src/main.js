@@ -80,6 +80,35 @@ function createWindow() {
 }
 
 // ── Init Postgres data directory ───────────────────────────────────────────
+// ── Postgres service account (runs postgres as non-admin on Windows) ──────
+const PG_SVC_USER = 'babyai_pg';
+const PG_SVC_PASS = 'BabyAI@pg2025';
+
+async function ensurePgServiceUser() {
+  if (process.platform !== 'win32') return;
+  return new Promise((resolve) => {
+    // Create user if not exists; ignore error if already exists
+    const proc = spawn('net', ['user', PG_SVC_USER, PG_SVC_PASS, '/add', '/expires:never', '/passwordchg:no'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    proc.stdout.on('data', d => log(`net user: ${d}`));
+    proc.stderr.on('data', d => log(`net user err: ${d}`));
+    proc.on('close', () => resolve()); // resolve regardless — user may already exist
+  });
+}
+
+async function grantPgDataDirAccess() {
+  if (process.platform !== 'win32') return;
+  return new Promise((resolve) => {
+    const proc = spawn('icacls', [DATA_DIR, '/grant', `${PG_SVC_USER}:(OI)(CI)F`, '/T'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    proc.stdout.on('data', d => log(`icacls: ${d}`));
+    proc.stderr.on('data', d => log(`icacls err: ${d}`));
+    proc.on('close', () => resolve());
+  });
+}
+
 async function initPostgres() {
   return new Promise((resolve, reject) => {
     if (fs.existsSync(path.join(DATA_DIR, 'PG_VERSION'))) {
@@ -103,11 +132,26 @@ async function initPostgres() {
 
 // ── Start Postgres ─────────────────────────────────────────────────────────
 async function startPostgres() {
-  await initPostgres();
+  if (process.platform === 'win32') {
+    await ensurePgServiceUser();
+    await initPostgres();
+    await grantPgDataDirAccess();
+  } else {
+    await initPostgres();
+  }
+
   return new Promise((resolve, reject) => {
     log(`Starting Postgres on port ${PG_PORT}...`);
     const pg = path.join(PG_DIR, 'bin', process.platform === 'win32' ? 'postgres.exe' : 'postgres');
-    pgProc = spawn(pg, ['-D', DATA_DIR, '-p', String(PG_PORT)], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    const spawnOpts = { stdio: ['ignore', 'pipe', 'pipe'] };
+    if (process.platform === 'win32') {
+      spawnOpts.username = PG_SVC_USER;
+      spawnOpts.password = PG_SVC_PASS;
+      spawnOpts.domain   = '.';
+    }
+
+    pgProc = spawn(pg, ['-D', DATA_DIR, '-p', String(PG_PORT)], spawnOpts);
 
     pgProc.stdout.on('data', d => log(`pg: ${d}`));
     pgProc.stderr.on('data', d => {
