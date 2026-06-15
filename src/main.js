@@ -115,18 +115,30 @@ async function initPostgres() {
       log('Postgres data dir already initialised');
       return resolve();
     }
+    // Clean up any partial/corrupt data dir before reinit
+    if (fs.existsSync(DATA_DIR)) {
+      log('Removing incomplete pgdata dir before reinit...');
+      fs.rmSync(DATA_DIR, { recursive: true, force: true });
+    }
 
     log('Initialising Postgres data directory...');
     fs.mkdirSync(DATA_DIR, { recursive: true });
 
     const initdb = path.join(PG_DIR, 'bin', process.platform === 'win32' ? 'initdb.exe' : 'initdb');
-    const proc   = execFile(initdb, ['-D', DATA_DIR, '-U', 'postgres', '--auth=trust', '--encoding=UTF8'], (err) => {
-      if (err) { log(`initdb error: ${err.message}`); return reject(err); }
-      log('Postgres data directory initialised');
-      resolve();
+    const initOpts = process.platform === 'win32'
+      ? { username: PG_SVC_USER, password: PG_SVC_PASS, domain: '.' }
+      : {};
+    const proc = spawn(initdb, ['-D', DATA_DIR, '-U', 'postgres', '--auth=trust', '--encoding=UTF8'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      ...initOpts,
     });
     proc.stdout?.on('data', d => log(`initdb: ${d}`));
     proc.stderr?.on('data', d => log(`initdb err: ${d}`));
+    proc.on('error', (err) => { log(`initdb error: ${err.message}`); reject(err); });
+    proc.on('close', (code) => {
+      if (code === 0) { log('Postgres data directory initialised'); resolve(); }
+      else { reject(new Error(`initdb exited with code ${code}`)); }
+    });
   });
 }
 
