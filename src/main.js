@@ -80,35 +80,6 @@ function createWindow() {
 }
 
 // ── Init Postgres data directory ───────────────────────────────────────────
-// ── Postgres service account (runs postgres as non-admin on Windows) ──────
-const PG_SVC_USER = 'babyai_pg';
-const PG_SVC_PASS = 'BabyAI@pg2025';
-
-async function ensurePgServiceUser() {
-  if (process.platform !== 'win32') return;
-  return new Promise((resolve) => {
-    // Create user if not exists; ignore error if already exists
-    const proc = spawn('net', ['user', PG_SVC_USER, PG_SVC_PASS, '/add', '/expires:never', '/passwordchg:no'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    proc.stdout.on('data', d => log(`net user: ${d}`));
-    proc.stderr.on('data', d => log(`net user err: ${d}`));
-    proc.on('close', () => resolve()); // resolve regardless — user may already exist
-  });
-}
-
-async function grantPgDataDirAccess() {
-  if (process.platform !== 'win32') return;
-  return new Promise((resolve) => {
-    const proc = spawn('icacls', [DATA_DIR, '/grant', `${PG_SVC_USER}:(OI)(CI)F`, '/T'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    proc.stdout.on('data', d => log(`icacls: ${d}`));
-    proc.stderr.on('data', d => log(`icacls err: ${d}`));
-    proc.on('close', () => resolve());
-  });
-}
-
 const PG_SVC_NAME = 'babyAI-postgres';
 
 function runCmd(cmd, args) {
@@ -150,15 +121,21 @@ async function initPostgres() {
 
 // ── Start Postgres ─────────────────────────────────────────────────────────
 async function startPostgres() {
-  await ensurePgServiceUser();
   await initPostgres();
-  await grantPgDataDirAccess();
+  await grantNetworkServiceAccess();
 
   if (process.platform === 'win32') {
     return startPostgresWindows();
   } else {
     return startPostgresUnix();
   }
+}
+
+async function grantNetworkServiceAccess() {
+  if (process.platform !== 'win32') return;
+  log('Granting NetworkService access to pgdata...');
+  await runCmd('icacls', [DATA_DIR, '/grant', 'NetworkService:(OI)(CI)F', '/T', '/Q']);
+  log('NetworkService access granted');
 }
 
 async function startPostgresWindows() {
@@ -175,8 +152,7 @@ async function startPostgresWindows() {
     log(`Registering Postgres as Windows service ${PG_SVC_NAME}...`);
     await runCmd(pgCtl, [
       'register', '-N', PG_SVC_NAME,
-      '-U', `.\${PG_SVC_USER}`,
-      '-P', PG_SVC_PASS,
+      '-U', 'NT AUTHORITY\NetworkService',
       '-D', DATA_DIR,
       '-o', `-p ${PG_PORT}`,
     ]);
