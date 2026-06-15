@@ -1,0 +1,132 @@
+name: Build & Release Windows Installer
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      # ── 1. Checkout desktop repo ──────────────────────────────────────────
+      - name: Checkout babyAI-desktop
+        uses: actions/checkout@v4
+
+      # ── 2. Checkout frontend (babyAI) ─────────────────────────────────────
+      - name: Checkout babyAI frontend
+        uses: actions/checkout@v4
+        with:
+          repository: sdc-dev-tech/babyAI
+          token: ${{ secrets.GH_PAT }}
+          path: babyAI
+
+      # ── 3. Checkout backend ───────────────────────────────────────────────
+      - name: Checkout babyAI-backend
+        uses: actions/checkout@v4
+        with:
+          repository: sdc-dev-tech/babyAI-backend
+          token: ${{ secrets.GH_PAT }}
+          path: babyAI-backend
+
+      # ── 4. Set up Node for Electron + Next.js ─────────────────────────────
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ── 5. Set up Python for PyInstaller ──────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # ── 6. Download portable Postgres binaries ────────────────────────────
+      - name: Download portable PostgreSQL
+        shell: pwsh
+        run: |
+          $PG_VERSION = "16.2-1"
+          $PG_URL     = "https://get.enterprisedb.com/postgresql/postgresql-${PG_VERSION}-windows-x64-binaries.zip"
+          $ZIP_PATH   = "$env:TEMP\pg-portable.zip"
+
+          Write-Host "Downloading PostgreSQL ${PG_VERSION}..."
+          Invoke-WebRequest -Uri $PG_URL -OutFile $ZIP_PATH -UseBasicParsing
+
+          Write-Host "Extracting..."
+          Expand-Archive -Path $ZIP_PATH -DestinationPath "$env:TEMP\pg-extract" -Force
+
+          $PG_SRC = "$env:TEMP\pg-extract\pgsql"
+          New-Item -ItemType Directory -Force -Path "vendor\postgres" | Out-Null
+          Copy-Item "$PG_SRC\bin"   vendor\postgres -Recurse -Force
+          Copy-Item "$PG_SRC\lib"   vendor\postgres -Recurse -Force
+          Copy-Item "$PG_SRC\share" vendor\postgres -Recurse -Force
+          Write-Host "PostgreSQL ready"
+
+      # ── 7. Build Next.js frontend (standalone) ────────────────────────────
+      - name: Build Next.js frontend
+        working-directory: babyAI
+        shell: pwsh
+        run: |
+          npm ci
+          $env:DESKTOP_BUILD       = "1"
+          $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:8000"
+          npx next build
+          # Copy standalone output to vendor/frontend
+          New-Item -ItemType Directory -Force -Path "..\vendor\frontend" | Out-Null
+          Copy-Item ".next\standalone\*" "..\vendor\frontend" -Recurse -Force
+          Copy-Item ".next\static"       "..\vendor\frontend\.next\static" -Recurse -Force
+          if (Test-Path "public") {
+            Copy-Item "public" "..\vendor\frontend\public" -Recurse -Force
+          }
+          Write-Host "Frontend built"
+
+      # ── 8. Freeze Python backend with PyInstaller ─────────────────────────
+      - name: Freeze Python backend
+        working-directory: babyAI-backend
+        shell: pwsh
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+          pyinstaller `
+            --onefile `
+            --name api `
+            --distpath "..\vendor\backend" `
+            --workpath "$env:TEMP\pyinstaller-build" `
+            --specpath "$env:TEMP\pyinstaller-spec" `
+            --hidden-import uvicorn.logging `
+            --hidden-import uvicorn.loops `
+            --hidden-import uvicorn.loops.auto `
+            --hidden-import uvicorn.protocols `
+            --hidden-import uvicorn.protocols.http `
+            --hidden-import uvicorn.protocols.http.auto `
+            --hidden-import uvicorn.protocols.websockets `
+            --hidden-import uvicorn.protocols.websockets.auto `
+            --hidden-import uvicorn.lifespan `
+            --hidden-import uvicorn.lifespan.on `
+            --hidden-import psycopg2 `
+            --collect-all fastapi `
+            --collect-all starlette `
+            api\main.py
+
+          Write-Host "Backend frozen"
+
+      # ── 9. Install Electron deps & build installer ────────────────────────
+      - name: Install Electron dependencies
+        run: npm ci
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $env:GH_TOKEN = "${{ secrets.GITHUB_TOKEN }}"
+          npm run build:win
+
+      # ── 10. Upload .exe to GitHub Release ────────────────────────────────
+      - name: Upload installer to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

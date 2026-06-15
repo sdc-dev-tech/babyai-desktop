@@ -1,0 +1,69 @@
+{
+  "name": "babyai-desktop",
+  "version": "1.0.0",
+  "description": "babyAI Desktop — ERP Intelligence for BUSY & Tally",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:all": "electron-builder --win --mac",
+    "pack": "electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.sdc.babyai",
+    "productName": "babyAI",
+    "copyright": "Copyright © 2025 SDC",
+    "directories": {
+      "output": "dist",
+      "buildResources": "resources"
+    },
+    "files": [
+      "src/**/*",
+      "resources/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/backend",
+        "to": "backend",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "vendor/postgres",
+        "to": "postgres",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "vendor/frontend",
+        "to": "frontend",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "babyAI"
+    },
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+      "icon": "resources/icon.icns",
+      "category": "public.app-category.business"
+    }
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "electron": "^29.0.0",
+    "electron-builder": "^24.13.0"
+  }
+}
