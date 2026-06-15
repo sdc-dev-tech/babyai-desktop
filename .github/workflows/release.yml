@@ -131,7 +131,7 @@ jobs:
 
       # ── 9. Install Electron deps & build installer ────────────────────────
       - name: Install Electron dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Windows installer
         shell: pwsh
