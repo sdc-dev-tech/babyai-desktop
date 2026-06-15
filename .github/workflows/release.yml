@@ -98,13 +98,21 @@ jobs:
           pip install -r babyAI-backend/requirements.txt
           pip install pyinstaller
 
-          # Run pyinstaller from the repo root so all paths stay on D:
-          pyinstaller `
+          # Copy everything to C: so PyInstaller stays on one drive
+          $src  = "$PWD\babyAI-backend"
+          $tmp  = "C:\babyai-build"
+          $dist = "$PWD\vendor\backend"
+
+          Copy-Item $src $tmp -Recurse -Force
+          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+
+          Set-Location $tmp
+          python -m PyInstaller `
             --onefile `
             --name api `
-            --distpath "vendor\backend" `
-            --workpath "build\pyinstaller-work" `
-            --specpath "build\pyinstaller-spec" `
+            --distpath $dist `
+            --workpath "C:\babyai-work" `
+            --specpath "C:\babyai-spec" `
             --hidden-import uvicorn.logging `
             --hidden-import uvicorn.loops `
             --hidden-import uvicorn.loops.auto `
@@ -118,7 +126,7 @@ jobs:
             --hidden-import psycopg2 `
             --collect-all fastapi `
             --collect-all starlette `
-            "babyAI-backend\api\main.py"
+            "api\main.py"
 
           Write-Host "Backend frozen"
 
