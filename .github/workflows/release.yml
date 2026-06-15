@@ -67,10 +67,11 @@ jobs:
       - name: Build Next.js frontend
         working-directory: babyAI
         shell: pwsh
+        env:
+          DESKTOP_BUILD: "1"
+          NEXT_PUBLIC_API_URL: "http://127.0.0.1:8000"
         run: |
           npm ci
-          $env:DESKTOP_BUILD       = "1"
-          $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:8000"
           npx next build
           # Copy standalone output to vendor/frontend
           New-Item -ItemType Directory -Force -Path "..\vendor\frontend" | Out-Null
