@@ -103,8 +103,8 @@ jobs:
             --onefile `
             --name api `
             --distpath "..\vendor\backend" `
-            --workpath "$env:TEMP\pyinstaller-build" `
-            --specpath "$env:TEMP\pyinstaller-spec" `
+            --workpath ".\build\pyinstaller-work" `
+            --specpath ".\build\pyinstaller-spec" `
             --hidden-import uvicorn.logging `
             --hidden-import uvicorn.loops `
             --hidden-import uvicorn.loops.auto `
