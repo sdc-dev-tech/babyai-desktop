@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path   = require('path');
 const { spawn, execFile } = require('child_process');
 const fs     = require('fs');
+const net    = require('net');
 const Store  = require('electron-store');
 
 const store = new Store();
@@ -188,9 +189,25 @@ async function startPostgresWindows() {
     proc.stderr?.on('data', d => log(`sc start err: ${d}`));
     proc.on('close', (code) => {
       log(`sc start exited with code ${code}`);
-      setTimeout(resolve, 3000);
+      waitForPort(PG_PORT, 30000).then(resolve);
     });
-    proc.on('error', () => setTimeout(resolve, 3000));
+    proc.on('error', () => waitForPort(PG_PORT, 30000).then(resolve));
+  });
+}
+
+function waitForPort(port, timeoutMs) {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    function attempt() {
+      const sock = net.createConnection({ port, host: '127.0.0.1' });
+      sock.once('connect', () => { sock.destroy(); log(`Port ${port} is ready`); resolve(); });
+      sock.once('error', () => {
+        sock.destroy();
+        if (Date.now() < deadline) setTimeout(attempt, 500);
+        else { log(`Timed out waiting for port ${port}`); resolve(); }
+      });
+    }
+    attempt();
   });
 }
 
