@@ -166,20 +166,26 @@ async function startPostgresWindows() {
       const cfgCode = await runCmd('sc', ['config', PG_SVC_NAME, 'obj=', 'NT AUTHORITY\\NetworkService']);
       log(`sc config NetworkService exited with code ${cfgCode}`);
       if (cfgCode !== 0) {
-        // Fallback: try LocalService
         const cfgCode2 = await runCmd('sc', ['config', PG_SVC_NAME, 'obj=', 'NT AUTHORITY\\LocalService']);
         log(`sc config LocalService exited with code ${cfgCode2}`);
       }
+
+      // Step 3: grant Administrators + Everyone start rights on the service
+      // D: DACL — BA=BuiltinAdmins full, SY=System full, WD=Everyone start+stop
+      const dacl = 'D:(A;;CCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;RPWPCR;;;WD)';
+      const sdCode = await runCmd('sc', ['sdset', PG_SVC_NAME, dacl]);
+      log(`sc sdset exited with code ${sdCode}`);
     }
   }
 
   return new Promise((resolve) => {
     log(`Starting Postgres service ${PG_SVC_NAME}...`);
-    const proc = spawn('net', ['start', PG_SVC_NAME], { stdio: ['ignore', 'pipe', 'pipe'] });
-    proc.stdout?.on('data', d => log(`net start: ${d}`));
-    proc.stderr?.on('data', d => log(`net start err: ${d}`));
+    // Use sc start rather than net start — same API, avoids net.exe quirks
+    const proc = spawn('sc', ['start', PG_SVC_NAME], { stdio: ['ignore', 'pipe', 'pipe'] });
+    proc.stdout?.on('data', d => log(`sc start: ${d}`));
+    proc.stderr?.on('data', d => log(`sc start err: ${d}`));
     proc.on('close', (code) => {
-      log(`Postgres service start exited with code ${code}`);
+      log(`sc start exited with code ${code}`);
       setTimeout(resolve, 3000);
     });
     proc.on('error', () => setTimeout(resolve, 3000));
