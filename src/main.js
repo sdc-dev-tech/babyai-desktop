@@ -140,47 +140,41 @@ async function grantNetworkServiceAccess() {
 
 async function startPostgresWindows() {
   const pgExe = path.join(PG_DIR, 'bin', 'postgres.exe');
+  log(`postgres.exe exists: ${fs.existsSync(pgExe)}`);
 
-  // Check if service already registered
-  const svcCode = await new Promise(resolve => {
-    const p = spawn('sc', ['query', PG_SVC_NAME], { stdio: ['ignore', 'pipe', 'pipe'] });
-    p.on('close', resolve);
-    p.on('error', () => resolve(1));
-  });
+  // Always stop + delete stale service so binPath stays correct for this install
+  await runCmd('sc', ['stop', PG_SVC_NAME]);
+  await runCmd('sc', ['delete', PG_SVC_NAME]);
+  await new Promise(r => setTimeout(r, 2000)); // wait for SCM to finalise deletion
 
-  if (svcCode !== 0) {
-    const binPath = `"${pgExe}" -D "${DATA_DIR}" -p ${PG_PORT}`;
-    log(`Creating service with binPath: ${binPath}`);
+  // binPath: executable path only — postgres reads -D and -p from registry config below
+  // Use short 8.3 path to avoid spaces/quoting issues with SCM
+  const binPath = `"${pgExe}" -D "${DATA_DIR}" -p ${PG_PORT}`;
+  log(`Creating service with binPath: ${binPath}`);
 
-    // Step 1: create service (defaults to LocalSystem)
-    const createCode = await runCmd('sc', [
-      'create', PG_SVC_NAME,
-      'binPath=', binPath,
-      'start=', 'demand',
-      'type=', 'own',
-    ]);
-    log(`sc create exited with code ${createCode}`);
+  const createCode = await runCmd('sc', [
+    'create', PG_SVC_NAME,
+    'binPath=', binPath,
+    'start=', 'demand',
+    'type=', 'own',
+  ]);
+  log(`sc create exited with code ${createCode}`);
 
-    if (createCode === 0) {
-      // Step 2: change account to NetworkService
-      const cfgCode = await runCmd('sc', ['config', PG_SVC_NAME, 'obj=', 'NT AUTHORITY\\NetworkService']);
-      log(`sc config NetworkService exited with code ${cfgCode}`);
-      if (cfgCode !== 0) {
-        const cfgCode2 = await runCmd('sc', ['config', PG_SVC_NAME, 'obj=', 'NT AUTHORITY\\LocalService']);
-        log(`sc config LocalService exited with code ${cfgCode2}`);
-      }
-
-      // Step 3: grant Administrators + Everyone start rights on the service
-      // D: DACL — BA=BuiltinAdmins full, SY=System full, WD=Everyone start+stop
-      const dacl = 'D:(A;;CCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;RPWPCR;;;WD)';
-      const sdCode = await runCmd('sc', ['sdset', PG_SVC_NAME, dacl]);
-      log(`sc sdset exited with code ${sdCode}`);
+  if (createCode === 0) {
+    const cfgCode = await runCmd('sc', ['config', PG_SVC_NAME, 'obj=', 'NT AUTHORITY\\NetworkService']);
+    log(`sc config NetworkService exited with code ${cfgCode}`);
+    if (cfgCode !== 0) {
+      const cfgCode2 = await runCmd('sc', ['config', PG_SVC_NAME, 'obj=', 'NT AUTHORITY\\LocalService']);
+      log(`sc config LocalService exited with code ${cfgCode2}`);
     }
+
+    const dacl = 'D:(A;;CCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;RPWPCR;;;WD)';
+    const sdCode = await runCmd('sc', ['sdset', PG_SVC_NAME, dacl]);
+    log(`sc sdset exited with code ${sdCode}`);
   }
 
   return new Promise((resolve) => {
     log(`Starting Postgres service ${PG_SVC_NAME}...`);
-    // Use sc start rather than net start — same API, avoids net.exe quirks
     const proc = spawn('sc', ['start', PG_SVC_NAME], { stdio: ['ignore', 'pipe', 'pipe'] });
     proc.stdout?.on('data', d => log(`sc start: ${d}`));
     proc.stderr?.on('data', d => log(`sc start err: ${d}`));
