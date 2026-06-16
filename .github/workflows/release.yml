@@ -80,6 +80,17 @@ jobs:
           Copy-Item "$PG_SRC\share" vendor\postgres -Recurse -Force
           Write-Host "PostgreSQL ready"
 
+      # ── 6c. Download Microsoft Access Database Engine (for pyodbc on Windows) ─
+      - name: Download Microsoft Access Database Engine
+        shell: pwsh
+        run: |
+          $URL = "https://download.microsoft.com/download/3/5/C/35C84C36-661A-44E3-BE3D-FDDE7CE6782B/AccessDatabaseEngine_X64.exe"
+          $OUT = "vendor\AccessDatabaseEngine_X64.exe"
+          New-Item -ItemType Directory -Force -Path "vendor" | Out-Null
+          Write-Host "Downloading Microsoft Access Database Engine..."
+          Invoke-WebRequest -Uri $URL -OutFile $OUT -UseBasicParsing
+          Write-Host "Access Database Engine downloaded: $((Get-Item $OUT).Length) bytes"
+
       # ── 7. Build Next.js frontend (standalone) ────────────────────────────
       - name: Build Next.js frontend
         working-directory: babyAI
@@ -140,6 +151,7 @@ jobs:
             --hidden-import uvicorn.lifespan `
             --hidden-import uvicorn.lifespan.on `
             --hidden-import psycopg2 `
+            --hidden-import pyodbc `
             --collect-all fastapi `
             --collect-all starlette `
             --collect-all api `

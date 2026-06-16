@@ -140,6 +140,34 @@ async function startPostgres() {
   }
 }
 
+async function installAccessDatabaseEngine() {
+  if (process.platform !== 'win32') return;
+  const marker = path.join(app.getPath('userData'), '.access_engine_installed');
+  if (fs.existsSync(marker)) { log('Access Database Engine already installed, skipping'); return; }
+
+  const installer = path.join(RESOURCES, 'AccessDatabaseEngine_X64.exe');
+  if (!fs.existsSync(installer)) { log('Access Database Engine installer not found, skipping'); return; }
+
+  log('Installing Microsoft Access Database Engine...');
+  await new Promise((resolve) => {
+    const proc = spawn(installer, ['/quiet', '/passive', '/norestart'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    proc.stdout.on('data', d => log(`access-engine: ${d.toString().trim()}`));
+    proc.stderr.on('data', d => log(`access-engine err: ${d.toString().trim()}`));
+    proc.on('close', (code) => {
+      // 0 = success, 3010 = success + reboot required (we ignore reboot)
+      if (code === 0 || code === 3010) {
+        log(`Access Database Engine installed (code ${code})`);
+        fs.writeFileSync(marker, new Date().toISOString());
+      } else {
+        log(`Access Database Engine installer exited with code ${code} — sync may fail`);
+      }
+      resolve();
+    });
+  });
+}
+
 async function grantNetworkServiceAccess() {
   if (process.platform !== 'win32') return;
   log('Granting NetworkService access to postgres directories...');
@@ -253,6 +281,7 @@ async function startBackend() {
       SUPABASE_URL:              'https://hnfkplodhuycahrxqxde.supabase.co',
       SUPABASE_SERVICE_ROLE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhuZmtwbG9kaHV5Y2FocnhxeGRlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTQyNjI2NSwiZXhwIjoyMDk1MDAyMjY1fQ.64U7rIeS7GhpiSOdyuPcIi_iUM9T5ahfeT4ypGo0Abk',
       ENCRYPTION_KEY:            'Rs_5lb70Js44x4KGRylpKnRBZ21usGdoSKQQe1f-KMk=',
+      MDB_TOOLS_DIR:             path.join(RESOURCES, 'mdbtools'),
     };
 
     log(`api.exe exists: ${fs.existsSync(exe)}`);
@@ -355,6 +384,7 @@ ipcMain.on('setup-complete', async (event, config) => {
 
   createWindow();
   try {
+    await installAccessDatabaseEngine();
     await startPostgres();
     await startBackend();
     await startFrontend();
@@ -378,6 +408,7 @@ app.whenReady().then(async () => {
   // Already set up — boot straight into the app
   createWindow();
   try {
+    await installAccessDatabaseEngine();
     await startPostgres();
     await startBackend();
     await startFrontend();

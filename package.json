@@ -1,6 +1,6 @@
 {
   "name": "babyai-desktop",
-  "version": "1.2.11",
+  "version": "1.2.12",
   "description": "babyAI Desktop \u2014 ERP Intelligence for BUSY & Tally",
   "main": "src/main.js",
   "scripts": {
@@ -50,6 +50,10 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "vendor/AccessDatabaseEngine_X64.exe",
+        "to": "AccessDatabaseEngine_X64.exe"
       }
     ],
     "win": {
