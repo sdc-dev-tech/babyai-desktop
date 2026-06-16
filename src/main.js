@@ -252,6 +252,9 @@ async function startBackend() {
       ANTHROPIC_API_KEY: store.get('anthropic_key', ''),
     };
 
+    log(`api.exe exists: ${fs.existsSync(exe)}`);
+    log(`api.exe path: ${exe}`);
+
     backendProc = spawn(exe, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
 
     backendProc.stdout.on('data', d => {
@@ -264,7 +267,8 @@ async function startBackend() {
       log(`api err: ${s}`);
       if (s.includes('Application startup complete') || s.includes('Uvicorn running')) resolve();
     });
-    backendProc.on('error', reject);
+    backendProc.on('error', (e) => log(`api spawn error: ${e.message}`));
+    backendProc.on('close', (code) => log(`api process exited with code ${code}`));
 
     setTimeout(resolve, 8000);
   });
