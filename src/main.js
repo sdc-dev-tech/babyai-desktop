@@ -142,7 +142,11 @@ async function startPostgres() {
 
 async function grantNetworkServiceAccess() {
   if (process.platform !== 'win32') return;
-  log('Granting NetworkService access to pgdata...');
+  log('Granting NetworkService access to postgres directories...');
+  // NetworkService needs RX on the postgres binaries (pg_ctl.exe, postgres.exe, DLLs)
+  // The install dir is under Administrator's AppData which NetworkService can't access by default
+  await runCmd('icacls', [RESOURCES, '/grant', 'NetworkService:(OI)(CI)RX', '/T', '/Q']);
+  // Full access to pgdata so postgres can write WAL, data files, lock files etc.
   await runCmd('icacls', [DATA_DIR, '/grant', 'NetworkService:(OI)(CI)F', '/T', '/Q']);
   log('NetworkService access granted');
 }
@@ -187,8 +191,12 @@ async function startPostgresWindows() {
     const proc = spawn('sc', ['start', PG_SVC_NAME], { stdio: ['ignore', 'pipe', 'pipe'] });
     proc.stdout?.on('data', d => log(`sc start: ${d}`));
     proc.stderr?.on('data', d => log(`sc start err: ${d}`));
-    proc.on('close', (code) => {
+    proc.on('close', async (code) => {
       log(`sc start exited with code ${code}`);
+      if (code !== 0) {
+        log('sc start failed, trying PowerShell Start-Service...');
+        await runCmd('powershell', ['-NoProfile', '-NonInteractive', '-Command', `Start-Service -Name '${PG_SVC_NAME}'`]);
+      }
       waitForPort(PG_PORT, 30000).then(resolve);
     });
     proc.on('error', () => waitForPort(PG_PORT, 30000).then(resolve));
