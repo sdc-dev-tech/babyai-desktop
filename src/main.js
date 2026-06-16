@@ -113,8 +113,16 @@ async function initPostgres() {
     proc.stderr?.on('data', d => log(`initdb err: ${d}`));
     proc.on('error', reject);
     proc.on('close', (code) => {
-      if (code === 0) { log('Postgres data directory initialised'); resolve(); }
-      else reject(new Error(`initdb exited with code ${code}`));
+      if (code === 0) {
+        log('Postgres data directory initialised');
+        // Write port into postgresql.conf so pg_ctl runservice picks it up
+        const conf = path.join(DATA_DIR, 'postgresql.conf');
+        fs.appendFileSync(conf, `\nport = ${PG_PORT}\n`);
+        log(`Set port = ${PG_PORT} in postgresql.conf`);
+        resolve();
+      } else {
+        reject(new Error(`initdb exited with code ${code}`));
+      }
     });
   });
 }
@@ -139,17 +147,17 @@ async function grantNetworkServiceAccess() {
 }
 
 async function startPostgresWindows() {
-  const pgExe = path.join(PG_DIR, 'bin', 'postgres.exe');
-  log(`postgres.exe exists: ${fs.existsSync(pgExe)}`);
+  const pgCtl = path.join(PG_DIR, 'bin', 'pg_ctl.exe');
+  log(`pg_ctl.exe exists: ${fs.existsSync(pgCtl)}`);
 
   // Always stop + delete stale service so binPath stays correct for this install
   await runCmd('sc', ['stop', PG_SVC_NAME]);
   await runCmd('sc', ['delete', PG_SVC_NAME]);
   await new Promise(r => setTimeout(r, 2000)); // wait for SCM to finalise deletion
 
-  // binPath: executable path only — postgres reads -D and -p from registry config below
-  // Use short 8.3 path to avoid spaces/quoting issues with SCM
-  const binPath = `"${pgExe}" -D "${DATA_DIR}" -p ${PG_PORT}`;
+  // pg_ctl runservice handles Windows SCM protocol (SetServiceStatus etc.)
+  // postgres.exe itself does NOT implement the SCM protocol — hence error 1053
+  const binPath = `"${pgCtl}" runservice -N "${PG_SVC_NAME}" -D "${DATA_DIR}"`;
   log(`Creating service with binPath: ${binPath}`);
 
   const createCode = await runCmd('sc', [
