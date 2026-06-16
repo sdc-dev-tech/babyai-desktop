@@ -143,6 +143,11 @@ jobs:
             --collect-all fastapi `
             --collect-all starlette `
             --collect-all api `
+            --collect-all httpx `
+            --collect-all httpcore `
+            --collect-data certifi `
+            --hidden-import ssl `
+            --hidden-import certifi `
             "run.py"
 
           # Copy output back to D: workspace
