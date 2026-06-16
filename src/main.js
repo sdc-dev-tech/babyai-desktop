@@ -246,10 +246,12 @@ async function startBackend() {
 
     const env = {
       ...process.env,
-      DATABASE_URL:    `postgresql://postgres@localhost:${PG_PORT}/postgres`,
-      PORT:            String(BACKEND_PORT),
-      HOST:            '127.0.0.1',
-      ANTHROPIC_API_KEY: store.get('anthropic_key', ''),
+      DATABASE_URL:              `postgresql://postgres@localhost:${PG_PORT}/postgres`,
+      PORT:                      String(BACKEND_PORT),
+      HOST:                      '127.0.0.1',
+      ANTHROPIC_API_KEY:         store.get('anthropic_key', ''),
+      SUPABASE_URL:              'https://hnfkplodhuycahrxqxde.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhuZmtwbG9kaHV5Y2FocnhxeGRlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTQyNjI2NSwiZXhwIjoyMDk1MDAyMjY1fQ.64U7rIeS7GhpiSOdyuPcIi_iUM9T5ahfeT4ypGo0Abk',
     };
 
     log(`api.exe exists: ${fs.existsSync(exe)}`);
@@ -407,3 +409,12 @@ app.on('before-quit', () => {
 
 // ── IPC: open log file location ────────────────────────────────────────────
 ipcMain.on('open-log', () => shell.showItemInFolder(logFile));
+
+// ── IPC: native folder picker ──────────────────────────────────────────────
+ipcMain.handle('open-folder-dialog', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: 'Select Buzzy Data Folder',
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
