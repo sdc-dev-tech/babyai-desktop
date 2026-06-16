@@ -252,6 +252,7 @@ async function startBackend() {
       ANTHROPIC_API_KEY:         store.get('anthropic_key', ''),
       SUPABASE_URL:              'https://hnfkplodhuycahrxqxde.supabase.co',
       SUPABASE_SERVICE_ROLE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhuZmtwbG9kaHV5Y2FocnhxeGRlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTQyNjI2NSwiZXhwIjoyMDk1MDAyMjY1fQ.64U7rIeS7GhpiSOdyuPcIi_iUM9T5ahfeT4ypGo0Abk',
+      ENCRYPTION_KEY:            'Rs_5lb70Js44x4KGRylpKnRBZ21usGdoSKQQe1f-KMk=',
     };
 
     log(`api.exe exists: ${fs.existsSync(exe)}`);
