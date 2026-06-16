@@ -149,16 +149,28 @@ async function startPostgresWindows() {
   });
 
   if (svcCode !== 0) {
-    log(`Registering Postgres as Windows service ${PG_SVC_NAME}...`);
-    // sc create handles built-in accounts (NetworkService) better than pg_ctl register
     const binPath = `"${pgExe}" -D "${DATA_DIR}" -p ${PG_PORT}`;
-    await runCmd('sc', [
+    log(`Creating service with binPath: ${binPath}`);
+
+    // Step 1: create service (defaults to LocalSystem)
+    const createCode = await runCmd('sc', [
       'create', PG_SVC_NAME,
       'binPath=', binPath,
-      'obj=', 'NT AUTHORITY\NetworkService',
       'start=', 'demand',
       'type=', 'own',
     ]);
+    log(`sc create exited with code ${createCode}`);
+
+    if (createCode === 0) {
+      // Step 2: change account to NetworkService
+      const cfgCode = await runCmd('sc', ['config', PG_SVC_NAME, 'obj=', 'NT AUTHORITY\\NetworkService']);
+      log(`sc config NetworkService exited with code ${cfgCode}`);
+      if (cfgCode !== 0) {
+        // Fallback: try LocalService
+        const cfgCode2 = await runCmd('sc', ['config', PG_SVC_NAME, 'obj=', 'NT AUTHORITY\\LocalService']);
+        log(`sc config LocalService exited with code ${cfgCode2}`);
+      }
+    }
   }
 
   return new Promise((resolve) => {
