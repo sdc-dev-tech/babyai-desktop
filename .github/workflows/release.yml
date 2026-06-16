@@ -142,7 +142,8 @@ jobs:
             --hidden-import psycopg2 `
             --collect-all fastapi `
             --collect-all starlette `
-            "api\main.py"
+            --collect-all api `
+            "run.py"
 
           # Copy output back to D: workspace
           New-Item -ItemType Directory -Force -Path "D:\a\babyai-desktop\babyai-desktop\vendor\backend" | Out-Null
