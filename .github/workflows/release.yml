@@ -24,6 +24,7 @@ jobs:
           repository: sdc-dev-tech/babyAI
           token: ${{ secrets.GH_PAT }}
           path: babyAI
+          ref: electron-desktop
 
       # ── 3. Checkout backend ───────────────────────────────────────────────
       - name: Checkout babyAI-backend
@@ -32,6 +33,7 @@ jobs:
           repository: sdc-dev-tech/babyAI-backend
           token: ${{ secrets.GH_PAT }}
           path: babyAI-backend
+          ref: llm-integration
 
       # ── 4. Set up Node for Electron + Next.js ─────────────────────────────
       - name: Set up Node 20
