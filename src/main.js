@@ -155,6 +155,9 @@ async function installAccessDatabaseEngine() {
     log('Bundled Access installer missing or placeholder — downloading from Microsoft...');
     const downloadPath = path.join(app.getPath('userData'), 'AccessDatabaseEngine_X64.exe');
     const urls = [
+      // Hosted on our own GitHub releases — stable URL we control
+      'https://github.com/sdc-dev-tech/babyai-desktop/releases/download/resources/AccessDatabaseEngine_X64.exe',
+      // Microsoft CDN fallbacks (may 404 if Microsoft changes URLs)
       'https://download.microsoft.com/download/3/5/C/35C84C36-661A-44E3-BE3D-FDDE7CE6782C/accessdatabaseengine_X64.exe',
       'https://download.microsoft.com/download/2/4/3/24375141-E08D-4803-AB0E-10F2E3A07AAA/AccessDatabaseEngine_X64.exe',
     ];
