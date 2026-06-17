@@ -145,8 +145,43 @@ async function installAccessDatabaseEngine() {
   const marker = path.join(app.getPath('userData'), '.access_engine_installed');
   if (fs.existsSync(marker)) { log('Access Database Engine already installed, skipping'); return; }
 
-  const installer = path.join(RESOURCES, 'AccessDatabaseEngine_X64.exe');
-  if (!fs.existsSync(installer)) { log('Access Database Engine installer not found, skipping'); return; }
+  let installer = path.join(RESOURCES, 'AccessDatabaseEngine_X64.exe');
+
+  // Check if bundled installer is a real exe or CI placeholder
+  const isPlaceholder = fs.existsSync(installer) &&
+    fs.statSync(installer).size < 1024 * 100; // real exe is ~50MB
+
+  if (!fs.existsSync(installer) || isPlaceholder) {
+    log('Bundled Access installer missing or placeholder — downloading from Microsoft...');
+    const downloadPath = path.join(app.getPath('userData'), 'AccessDatabaseEngine_X64.exe');
+    const urls = [
+      'https://download.microsoft.com/download/3/5/C/35C84C36-661A-44E3-BE3D-FDDE7CE6782C/accessdatabaseengine_X64.exe',
+      'https://download.microsoft.com/download/2/4/3/24375141-E08D-4803-AB0E-10F2E3A07AAA/AccessDatabaseEngine_X64.exe',
+    ];
+    let downloaded = false;
+    for (const url of urls) {
+      try {
+        log(`Trying: ${url}`);
+        const fetch = require('node-fetch');
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const buf = await res.buffer();
+        if (buf.length > 1024 * 1024) {
+          fs.writeFileSync(downloadPath, buf);
+          installer = downloadPath;
+          downloaded = true;
+          log(`Downloaded Access Engine: ${buf.length} bytes`);
+          break;
+        }
+      } catch (e) {
+        log(`Download failed (${url}): ${e.message}`);
+      }
+    }
+    if (!downloaded) {
+      log('Could not obtain Access Database Engine installer — .bds sync may fail if driver not already installed');
+      return;
+    }
+  }
 
   log('Installing Microsoft Access Database Engine...');
   await new Promise((resolve) => {
@@ -156,12 +191,11 @@ async function installAccessDatabaseEngine() {
     proc.stdout.on('data', d => log(`access-engine: ${d.toString().trim()}`));
     proc.stderr.on('data', d => log(`access-engine err: ${d.toString().trim()}`));
     proc.on('close', (code) => {
-      // 0 = success, 3010 = success + reboot required (we ignore reboot)
       if (code === 0 || code === 3010) {
         log(`Access Database Engine installed (code ${code})`);
         fs.writeFileSync(marker, new Date().toISOString());
       } else {
-        log(`Access Database Engine installer exited with code ${code} — sync may fail`);
+        log(`Access Database Engine installer exited with code ${code}`);
       }
       resolve();
     });

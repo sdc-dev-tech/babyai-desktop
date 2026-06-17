@@ -84,12 +84,33 @@ jobs:
       - name: Download Microsoft Access Database Engine
         shell: pwsh
         run: |
-          $URL = "https://download.microsoft.com/download/3/5/C/35C84C36-661A-44E3-BE3D-FDDE7CE6782B/AccessDatabaseEngine_X64.exe"
           $OUT = "vendor\AccessDatabaseEngine_X64.exe"
           New-Item -ItemType Directory -Force -Path "vendor" | Out-Null
-          Write-Host "Downloading Microsoft Access Database Engine..."
-          Invoke-WebRequest -Uri $URL -OutFile $OUT -UseBasicParsing
-          Write-Host "Access Database Engine downloaded: $((Get-Item $OUT).Length) bytes"
+          # Try known URLs in order — Microsoft occasionally changes CDN paths
+          $URLS = @(
+            "https://download.microsoft.com/download/3/5/C/35C84C36-661A-44E3-BE3D-FDDE7CE6782C/accessdatabaseengine_X64.exe",
+            "https://download.microsoft.com/download/2/4/3/24375141-E08D-4803-AB0E-10F2E3A07AAA/AccessDatabaseEngine_X64.exe",
+            "https://download.microsoft.com/download/3/5/C/35C84C36-661A-44E3-BE3D-FDDE7CE6782B/AccessDatabaseEngine_X64.exe"
+          )
+          $downloaded = $false
+          foreach ($url in $URLS) {
+            try {
+              Write-Host "Trying: $url"
+              Invoke-WebRequest -Uri $url -OutFile $OUT -UseBasicParsing -TimeoutSec 60
+              if ((Get-Item $OUT).Length -gt 1MB) {
+                Write-Host "Downloaded: $((Get-Item $OUT).Length) bytes"
+                $downloaded = $true
+                break
+              }
+            } catch {
+              Write-Warning "Failed: $_"
+            }
+          }
+          if (-not $downloaded) {
+            Write-Warning "Could not download Access Database Engine — app will download it at first launch"
+            # Write a placeholder so electron-builder doesn't fail on missing file
+            [System.IO.File]::WriteAllText($OUT, "PLACEHOLDER")
+          }
 
       # ── 7. Build Next.js frontend (standalone) ────────────────────────────
       - name: Build Next.js frontend
