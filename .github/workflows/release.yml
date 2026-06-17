@@ -204,13 +204,14 @@ jobs:
       - name: Rename installer
         shell: pwsh
         run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
           $exe = Get-ChildItem dist\*.exe | Select-Object -First 1
-          Rename-Item $exe.FullName "babyAI-Setup.exe"
+          Rename-Item $exe.FullName "babyAI-Setup-$version.exe"
 
       - name: Upload installer to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/babyAI-Setup.exe
+          files: dist/babyAI-Setup-*.exe
           generate_release_notes: true
           fail_on_unmatched_files: true
         env:
