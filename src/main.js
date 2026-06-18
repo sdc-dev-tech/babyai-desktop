@@ -145,60 +145,73 @@ async function installAccessDatabaseEngine() {
   const marker = path.join(app.getPath('userData'), '.access_engine_installed');
   if (fs.existsSync(marker)) { log('Access Database Engine already installed, skipping'); return; }
 
-  let installer = path.join(RESOURCES, 'AccessDatabaseEngine_X64.exe');
+  const fetch = require('node-fetch');
 
-  // Check if bundled installer is a real exe or CI placeholder
-  const isPlaceholder = fs.existsSync(installer) &&
-    fs.statSync(installer).size < 1024 * 100; // real exe is ~50MB
-
-  if (!fs.existsSync(installer) || isPlaceholder) {
-    log('Bundled Access installer missing or placeholder — downloading from Microsoft...');
-    const downloadPath = path.join(app.getPath('userData'), 'AccessDatabaseEngine_X64.exe');
-    const urls = [
-      // Hosted on our own GitHub releases — stable URL we control
-      'https://github.com/sdc-dev-tech/babyai-desktop/releases/download/resources/AccessDatabaseEngine_X64.exe',
-      // Microsoft CDN fallbacks (may 404 if Microsoft changes URLs)
-      'https://download.microsoft.com/download/3/5/C/35C84C36-661A-44E3-BE3D-FDDE7CE6782C/accessdatabaseengine_X64.exe',
-      'https://download.microsoft.com/download/2/4/3/24375141-E08D-4803-AB0E-10F2E3A07AAA/AccessDatabaseEngine_X64.exe',
-    ];
-    let downloaded = false;
+  async function downloadInstaller(filename, urls) {
+    const bundled = path.join(RESOURCES, filename);
+    const isPlaceholder = fs.existsSync(bundled) && fs.statSync(bundled).size < 1024 * 100;
+    if (fs.existsSync(bundled) && !isPlaceholder) return bundled;
+    const downloadPath = path.join(app.getPath('userData'), filename);
     for (const url of urls) {
       try {
         log(`Trying: ${url}`);
-        const fetch = require('node-fetch');
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.buffer();
         if (buf.length > 1024 * 1024) {
           fs.writeFileSync(downloadPath, buf);
-          installer = downloadPath;
-          downloaded = true;
-          log(`Downloaded Access Engine: ${buf.length} bytes`);
-          break;
+          log(`Downloaded ${filename}: ${buf.length} bytes`);
+          return downloadPath;
         }
       } catch (e) {
         log(`Download failed (${url}): ${e.message}`);
       }
     }
-    if (!downloaded) {
-      log('Could not obtain Access Database Engine installer — .bds sync may fail if driver not already installed');
-      return;
-    }
+    return null;
+  }
+
+  // Try 64-bit first, fall back to 32-bit (needed if 32-bit Office is installed)
+  let installer = await downloadInstaller('AccessDatabaseEngine_X64.exe', [
+    'https://github.com/sdc-dev-tech/babyai-desktop/releases/download/resources/AccessDatabaseEngine_X64.exe',
+    'https://download.microsoft.com/download/3/5/C/35C84C36-661A-44E3-BE3D-FDDE7CE6782C/accessdatabaseengine_X64.exe',
+  ]);
+
+  if (!installer) {
+    log('64-bit download failed — trying 32-bit fallback...');
+    installer = await downloadInstaller('AccessDatabaseEngine.exe', [
+      'https://github.com/sdc-dev-tech/babyai-desktop/releases/download/resources/AccessDatabaseEngine.exe',
+      'https://download.microsoft.com/download/3/5/C/35C84C36-661A-44E3-BE3D-FDDE7CE6782C/accessdatabaseengine.exe',
+    ]);
+  }
+
+  if (!installer) {
+    log('Could not obtain Access Database Engine installer — .bds sync may fail if driver not already installed');
+    return;
   }
 
   log('Installing Microsoft Access Database Engine...');
   await new Promise((resolve) => {
-    const proc = spawn(installer, ['/quiet', '/passive', '/norestart'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
+    let proc;
+    try {
+      proc = spawn(installer, ['/quiet', '/passive', '/norestart'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (e) {
+      log(`Access Database Engine install skipped (${e.message}) — .bds sync may fail if driver not installed`);
+      return resolve();
+    }
+    proc.stdout?.on('data', d => log(`access-engine: ${d.toString().trim()}`));
+    proc.stderr?.on('data', d => log(`access-engine err: ${d.toString().trim()}`));
+    proc.on('error', (e) => {
+      log(`Access Database Engine error: ${e.message} — .bds sync may fail if driver not installed`);
+      resolve();
     });
-    proc.stdout.on('data', d => log(`access-engine: ${d.toString().trim()}`));
-    proc.stderr.on('data', d => log(`access-engine err: ${d.toString().trim()}`));
     proc.on('close', (code) => {
       if (code === 0 || code === 3010) {
         log(`Access Database Engine installed (code ${code})`);
         fs.writeFileSync(marker, new Date().toISOString());
       } else {
-        log(`Access Database Engine installer exited with code ${code}`);
+        log(`Access Database Engine installer exited with code ${code} — may need manual install`);
       }
       resolve();
     });
