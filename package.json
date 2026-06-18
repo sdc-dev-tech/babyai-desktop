@@ -1,7 +1,7 @@
 {
   "name": "babyai-desktop",
-  "version": "1.2.24",
-  "description": "babyAI Desktop \u2014 ERP Intelligence for BUSY & Tally",
+  "version": "1.2.25",
+  "description": "babyAI Desktop — ERP Intelligence for BUSY & Tally",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -13,7 +13,7 @@
   "build": {
     "appId": "com.sdc.babyai",
     "productName": "babyAI",
-    "copyright": "Copyright \u00a9 2025 SDC",
+    "copyright": "Copyright © 2025 SDC",
     "directories": {
       "output": "dist",
       "buildResources": "resources"

@@ -334,6 +334,11 @@ async function startBackend() {
     const env = {
       ...process.env,
       DATABASE_URL:              `postgresql://postgres@localhost:${PG_PORT}/postgres`,
+      POSTGRES_HOST:             'localhost',
+      POSTGRES_PORT:             String(PG_PORT),
+      POSTGRES_DB:               'postgres',
+      POSTGRES_USER:             'postgres',
+      POSTGRES_PASSWORD:         '',
       PORT:                      String(BACKEND_PORT),
       HOST:                      '127.0.0.1',
       ANTHROPIC_API_KEY:         store.get('anthropic_key', ''),
