@@ -107,8 +107,13 @@ async function initPostgres() {
 
   const initdb = path.join(PG_DIR, 'bin', process.platform === 'win32' ? 'initdb.exe' : 'initdb');
   await new Promise((resolve, reject) => {
+    const pgEnv = {
+      ...process.env,
+      PATH: `${path.join(PG_DIR, 'bin')};${path.join(PG_DIR, 'lib')};${process.env.PATH || ''}`,
+    };
     const proc = spawn(initdb, ['-D', DATA_DIR, '-U', 'postgres', '--auth=trust', '--encoding=UTF8'], {
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: pgEnv,
     });
     proc.stdout?.on('data', d => log(`initdb: ${d}`));
     proc.stderr?.on('data', d => log(`initdb err: ${d}`));
@@ -301,7 +306,11 @@ async function startPostgresUnix() {
   return new Promise((resolve, reject) => {
     log(`Starting Postgres on port ${PG_PORT}...`);
     const pg = path.join(PG_DIR, 'bin', 'postgres');
-    pgProc = spawn(pg, ['-D', DATA_DIR, '-p', String(PG_PORT)], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const pgEnv2 = {
+      ...process.env,
+      PATH: `${path.join(PG_DIR, 'bin')};${path.join(PG_DIR, 'lib')};${process.env.PATH || ''}`,
+    };
+    pgProc = spawn(pg, ['-D', DATA_DIR, '-p', String(PG_PORT)], { stdio: ['ignore', 'pipe', 'pipe'], env: pgEnv2 });
     pgProc.stdout.on('data', d => log(`pg: ${d}`));
     pgProc.stderr.on('data', d => {
       const s = d.toString();
