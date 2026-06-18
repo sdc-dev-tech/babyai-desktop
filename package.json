@@ -54,6 +54,10 @@
       {
         "from": "vendor/AccessDatabaseEngine_X64.exe",
         "to": "AccessDatabaseEngine_X64.exe"
+      },
+      {
+        "from": "vendor/vc_redist.x64.exe",
+        "to": "vc_redist.x64.exe"
       }
     ],
     "win": {

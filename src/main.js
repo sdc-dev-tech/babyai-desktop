@@ -43,6 +43,7 @@ const BACKEND_DIR  = path.join(RESOURCES, 'backend');
 const FRONTEND_DIR = path.join(RESOURCES, 'frontend');
 const PG_DIR       = path.join(RESOURCES, 'postgres');
 const DATA_DIR     = path.join(app.getPath('userData'), 'pgdata');
+const VC_REDIST    = path.join(RESOURCES, 'vc_redist.x64.exe');
 
 // ── Process handles ────────────────────────────────────────────────────────
 let pgProc       = null;
@@ -93,6 +94,65 @@ function runCmd(cmd, args) {
   });
 }
 
+// Install VC++ Redistributable silently — needed by bundled Postgres DLLs on clean Windows machines
+async function installVcRedist() {
+  if (process.platform !== 'win32') return;
+  if (!fs.existsSync(VC_REDIST)) {
+    log('vc_redist.x64.exe not found — skipping');
+    return;
+  }
+  log('Installing Visual C++ Redistributable (required by Postgres)...');
+  await new Promise((resolve) => {
+    let proc;
+    try {
+      proc = spawn(VC_REDIST, ['/install', '/quiet', '/norestart'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (e) {
+      log(`vc_redist install skipped: ${e.message}`);
+      return resolve();
+    }
+    proc.on('error', (e) => { log(`vc_redist error: ${e.message}`); resolve(); });
+    proc.on('close', (code) => {
+      // 0 = success, 3010 = success (reboot suggested), 1638 = already installed
+      if (code === 0 || code === 3010 || code === 1638) {
+        log(`VC++ Redistributable ready (code ${code})`);
+      } else {
+        log(`vc_redist exited with code ${code}`);
+      }
+      resolve();
+    });
+  });
+}
+
+async function runInitdb() {
+  const initdb = path.join(PG_DIR, 'bin', process.platform === 'win32' ? 'initdb.exe' : 'initdb');
+  const pgEnv = {
+    ...process.env,
+    PATH: `${path.join(PG_DIR, 'bin')};${path.join(PG_DIR, 'lib')};${process.env.PATH || ''}`,
+  };
+  return new Promise((resolve, reject) => {
+    const proc = spawn(initdb, ['-D', DATA_DIR, '-U', 'postgres', '--auth=trust', '--encoding=UTF8'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: pgEnv,
+    });
+    proc.stdout?.on('data', d => log(`initdb: ${d}`));
+    proc.stderr?.on('data', d => log(`initdb err: ${d}`));
+    proc.on('error', reject);
+    proc.on('close', (code) => {
+      if (code === 0) {
+        log('Postgres data directory initialised');
+        const conf = path.join(DATA_DIR, 'postgresql.conf');
+        fs.appendFileSync(conf, `\nport = ${PG_PORT}\n`);
+        log(`Set port = ${PG_PORT} in postgresql.conf`);
+        resolve();
+      } else {
+        reject(Object.assign(new Error(`initdb exited with code ${code}`), { exitCode: code }));
+      }
+    });
+  });
+}
+
 async function initPostgres() {
   if (fs.existsSync(path.join(DATA_DIR, 'PG_VERSION'))) {
     log('Postgres data dir already initialised');
@@ -105,32 +165,21 @@ async function initPostgres() {
   log('Initialising Postgres data directory...');
   fs.mkdirSync(DATA_DIR, { recursive: true });
 
-  const initdb = path.join(PG_DIR, 'bin', process.platform === 'win32' ? 'initdb.exe' : 'initdb');
-  await new Promise((resolve, reject) => {
-    const pgEnv = {
-      ...process.env,
-      PATH: `${path.join(PG_DIR, 'bin')};${path.join(PG_DIR, 'lib')};${process.env.PATH || ''}`,
-    };
-    const proc = spawn(initdb, ['-D', DATA_DIR, '-U', 'postgres', '--auth=trust', '--encoding=UTF8'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: pgEnv,
-    });
-    proc.stdout?.on('data', d => log(`initdb: ${d}`));
-    proc.stderr?.on('data', d => log(`initdb err: ${d}`));
-    proc.on('error', reject);
-    proc.on('close', (code) => {
-      if (code === 0) {
-        log('Postgres data directory initialised');
-        // Write port into postgresql.conf so pg_ctl runservice picks it up
-        const conf = path.join(DATA_DIR, 'postgresql.conf');
-        fs.appendFileSync(conf, `\nport = ${PG_PORT}\n`);
-        log(`Set port = ${PG_PORT} in postgresql.conf`);
-        resolve();
-      } else {
-        reject(new Error(`initdb exited with code ${code}`));
-      }
-    });
-  });
+  try {
+    await runInitdb();
+  } catch (err) {
+    // 3221225781 = 0xC0000005 ACCESS_VIOLATION — missing VC++ runtime DLLs
+    const isVcError = err.exitCode === 3221225781 || err.exitCode === 3221225794;
+    if (isVcError) {
+      log('initdb crashed (likely missing VC++ runtime) — installing vc_redist and retrying...');
+      await installVcRedist();
+      fs.rmSync(DATA_DIR, { recursive: true, force: true });
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      await runInitdb();
+    } else {
+      throw err;
+    }
+  }
 }
 
 // ── Start Postgres ─────────────────────────────────────────────────────────
