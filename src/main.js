@@ -283,7 +283,7 @@ async function grantNetworkServiceAccess() {
   log('NetworkService access granted');
 }
 
-async function startPostgresWindows() {
+async function startPostgresWindowsService() {
   const pgCtl = path.join(PG_DIR, 'bin', 'pg_ctl.exe');
   log(`pg_ctl.exe exists: ${fs.existsSync(pgCtl)}`);
 
@@ -304,19 +304,21 @@ async function startPostgresWindows() {
     'type=', 'own',
   ]);
   log(`sc create exited with code ${createCode}`);
-
-  if (createCode === 0) {
-    const cfgCode = await runCmd('sc', ['config', PG_SVC_NAME, 'obj=', 'NT AUTHORITY\\NetworkService']);
-    log(`sc config NetworkService exited with code ${cfgCode}`);
-    if (cfgCode !== 0) {
-      const cfgCode2 = await runCmd('sc', ['config', PG_SVC_NAME, 'obj=', 'NT AUTHORITY\\LocalService']);
-      log(`sc config LocalService exited with code ${cfgCode2}`);
-    }
-
-    const dacl = 'D:(A;;CCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;RPWPCR;;;WD)';
-    const sdCode = await runCmd('sc', ['sdset', PG_SVC_NAME, dacl]);
-    log(`sc sdset exited with code ${sdCode}`);
+  if (createCode !== 0) {
+    log('sc create failed (likely not admin) — will fall back to direct spawn');
+    return false;
   }
+
+  const cfgCode = await runCmd('sc', ['config', PG_SVC_NAME, 'obj=', 'NT AUTHORITY\\NetworkService']);
+  log(`sc config NetworkService exited with code ${cfgCode}`);
+  if (cfgCode !== 0) {
+    const cfgCode2 = await runCmd('sc', ['config', PG_SVC_NAME, 'obj=', 'NT AUTHORITY\\LocalService']);
+    log(`sc config LocalService exited with code ${cfgCode2}`);
+  }
+
+  const dacl = 'D:(A;;CCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;RPWPCR;;;WD)';
+  const sdCode = await runCmd('sc', ['sdset', PG_SVC_NAME, dacl]);
+  log(`sc sdset exited with code ${sdCode}`);
 
   return new Promise((resolve) => {
     log(`Starting Postgres service ${PG_SVC_NAME}...`);
@@ -329,10 +331,47 @@ async function startPostgresWindows() {
         log('sc start failed, trying PowerShell Start-Service...');
         await runCmd('powershell', ['-NoProfile', '-NonInteractive', '-Command', `Start-Service -Name '${PG_SVC_NAME}'`]);
       }
-      waitForPort(PG_PORT, 30000).then(resolve);
+      // Check port — if still not up after service attempt, signal failure
+      const sock = net.createConnection({ port: PG_PORT, host: '127.0.0.1' });
+      sock.setTimeout(5000);
+      sock.once('connect', () => { sock.destroy(); log('Service start confirmed on port'); resolve(true); });
+      sock.once('error', () => { sock.destroy(); log('Service started but port not responding'); resolve(false); });
+      sock.once('timeout', () => { sock.destroy(); resolve(false); });
     });
-    proc.on('error', () => waitForPort(PG_PORT, 30000).then(resolve));
+    proc.on('error', () => resolve(false));
   });
+}
+
+async function startPostgresWindowsDirect() {
+  log('Starting Postgres directly (non-admin fallback)...');
+  const pg = path.join(PG_DIR, 'bin', 'postgres.exe');
+  const pgEnv2 = {
+    ...process.env,
+    PATH: `${path.join(PG_DIR, 'bin')};${path.join(PG_DIR, 'lib')};${process.env.PATH || ''}`,
+  };
+  return new Promise((resolve) => {
+    pgProc = spawn(pg, ['-D', DATA_DIR, '-p', String(PG_PORT)], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: pgEnv2,
+    });
+    pgProc.stdout?.on('data', d => log(`pg: ${d}`));
+    pgProc.stderr?.on('data', d => {
+      const s = d.toString();
+      log(`pg: ${s}`);
+      if (s.includes('database system is ready')) resolve();
+    });
+    pgProc.on('error', (e) => { log(`postgres.exe spawn error: ${e.message}`); resolve(); });
+    // Give it up to 10 s; resolve early if port becomes available
+    waitForPort(PG_PORT, 10000).then(resolve);
+  });
+}
+
+async function startPostgresWindows() {
+  const serviceOk = await startPostgresWindowsService();
+  if (serviceOk) return;
+  log('Service approach failed — falling back to direct postgres.exe spawn');
+  await startPostgresWindowsDirect();
+  await waitForPort(PG_PORT, 20000);
 }
 
 function waitForPort(port, timeoutMs) {
