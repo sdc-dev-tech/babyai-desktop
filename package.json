@@ -69,6 +69,7 @@
           ]
         }
       ],
+      "compression": "maximum",
       "icon": "resources/icon.ico"
     },
     "nsis": {
@@ -78,7 +79,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "babyAI",
       "perMachine": false,
-      "allowElevation": false
+      "allowElevation": false,
+      "compression": "maximum"
     },
     "mac": {
       "target": [

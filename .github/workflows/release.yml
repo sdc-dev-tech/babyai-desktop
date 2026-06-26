@@ -76,11 +76,37 @@ jobs:
           Expand-Archive -Path $ZIP_PATH -DestinationPath "$env:TEMP\pg-extract" -Force
 
           $PG_SRC = "$env:TEMP\pg-extract\pgsql"
-          New-Item -ItemType Directory -Force -Path "vendor\postgres" | Out-Null
-          Copy-Item "$PG_SRC\bin"   vendor\postgres -Recurse -Force
-          Copy-Item "$PG_SRC\lib"   vendor\postgres -Recurse -Force
-          Copy-Item "$PG_SRC\share" vendor\postgres -Recurse -Force
-          Write-Host "PostgreSQL ready"
+          New-Item -ItemType Directory -Force -Path "vendor\postgres\bin" | Out-Null
+          New-Item -ItemType Directory -Force -Path "vendor\postgres\lib" | Out-Null
+          New-Item -ItemType Directory -Force -Path "vendor\postgres\share" | Out-Null
+
+          # Copy only the binaries actually needed at runtime
+          $KEEP_BIN = @("postgres.exe","pg_ctl.exe","initdb.exe","psql.exe","pg_resetwal.exe")
+          foreach ($f in $KEEP_BIN) {
+            $src = "$PG_SRC\bin\$f"
+            if (Test-Path $src) { Copy-Item $src "vendor\postgres\bin\" -Force }
+          }
+          # Copy all DLLs (postgres.exe needs them) but skip debug symbols
+          Get-ChildItem "$PG_SRC\bin\*.dll" | Copy-Item -Destination "vendor\postgres\bin\" -Force
+
+          # lib: only the extension .dll files postgres loads at startup
+          Copy-Item "$PG_SRC\lib" vendor\postgres -Recurse -Force
+
+          # share: only timezone data + english locale (no docs, no other locales)
+          Copy-Item "$PG_SRC\share\timezone"       "vendor\postgres\share\timezone"       -Recurse -Force
+          Copy-Item "$PG_SRC\share\timezonesets"   "vendor\postgres\share\timezonesets"   -Recurse -Force -ErrorAction SilentlyContinue
+          Copy-Item "$PG_SRC\share\pg_hba.conf.sample" "vendor\postgres\share\" -Force -ErrorAction SilentlyContinue
+          # postgresql.conf and shared catalog files
+          Get-ChildItem "$PG_SRC\share" -Filter "*.bki"  | Copy-Item -Destination "vendor\postgres\share\" -Force
+          Get-ChildItem "$PG_SRC\share" -Filter "*.conf*" | Copy-Item -Destination "vendor\postgres\share\" -Force
+          Get-ChildItem "$PG_SRC\share" -Filter "*.sample" | Copy-Item -Destination "vendor\postgres\share\" -Force
+          # pg_catalog SQL files needed by initdb
+          if (Test-Path "$PG_SRC\share\sql") {
+            Copy-Item "$PG_SRC\share\sql" "vendor\postgres\share\sql" -Recurse -Force
+          }
+
+          Write-Host "PostgreSQL ready (slim)"
+          Write-Host "bin size: $((Get-ChildItem vendor\postgres\bin -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB) MB"
 
       # ── 6c. Download Microsoft Access Database Engine (for pyodbc on Windows) ─
       - name: Download Microsoft Access Database Engine
@@ -185,9 +211,6 @@ jobs:
             --hidden-import uvicorn.lifespan.on `
             --hidden-import psycopg2 `
             --hidden-import pyodbc `
-            --hidden-import scipy `
-            --hidden-import scipy.stats `
-            --collect-all scipy `
             --collect-all fastapi `
             --collect-all starlette `
             --collect-all api `
