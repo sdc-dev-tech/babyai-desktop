@@ -13,6 +13,7 @@
   "build": {
     "appId": "com.sdc.babyai",
     "productName": "babyAI",
+    "compression": "maximum",
     "copyright": "Copyright © 2025 SDC",
     "directories": {
       "output": "dist",
@@ -78,8 +79,7 @@
       "createStartMenuShortcut": true,
       "shortcutName": "babyAI",
       "perMachine": false,
-      "allowElevation": false,
-      "compression": "maximum"
+      "allowElevation": false
     },
     "mac": {
       "target": [
