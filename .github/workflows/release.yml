@@ -92,17 +92,9 @@ jobs:
           # lib: only the extension .dll files postgres loads at startup
           Copy-Item "$PG_SRC\lib" vendor\postgres -Recurse -Force
 
-          # share: copy everything initdb needs (sql, dat, bki, conf, timezone, extension)
-          # Flat files in share root
-          foreach ($ext in @("*.sql","*.dat","*.bki","*.conf*","*.sample","*.description")) {
-            Get-ChildItem "$PG_SRC\share" -Filter $ext | Copy-Item -Destination "vendor\postgres\share\" -Force
-          }
-          # Subdirectories required by initdb and postgres at runtime
-          foreach ($sub in @("timezone","timezonesets","extension","sql")) {
-            if (Test-Path "$PG_SRC\share\$sub") {
-              Copy-Item "$PG_SRC\share\$sub" "vendor\postgres\share\$sub" -Recurse -Force
-            }
-          }
+          # share: copy the entire directory — initdb needs many file types and
+          # cherry-picking extensions causes hard-to-debug missing-file failures
+          Copy-Item "$PG_SRC\share" vendor\postgres -Recurse -Force
 
           Write-Host "PostgreSQL ready (slim)"
           Write-Host "bin size: $((Get-ChildItem vendor\postgres\bin -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB) MB"
