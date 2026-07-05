@@ -76,6 +76,20 @@ function createWindow() {
     show: false,
   });
 
+  // Browser-style back navigation (Alt+Left, mouse back button) — needed
+  // because external pages (e.g. Google's OAuth screen) have no back button
+  // of their own and the window chrome doesn't expose one either.
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.type === 'keyDown' && input.alt && input.key === 'ArrowLeft') {
+      if (mainWindow.webContents.canGoBack()) mainWindow.webContents.goBack();
+    }
+  });
+  mainWindow.webContents.on('app-command', (_event, cmd) => {
+    if (cmd === 'browser-backward' && mainWindow.webContents.canGoBack()) {
+      mainWindow.webContents.goBack();
+    }
+  });
+
   // Show loading screen first
   mainWindow.loadFile(path.join(__dirname, 'loading.html'));
   mainWindow.once('ready-to-show', () => mainWindow.show());
@@ -519,8 +533,12 @@ async function waitAndLoad() {
     }
   }
 
-  log(`Loading app at http://localhost:${FRONTEND_PORT}`);
-  mainWindow.loadURL(`http://localhost:${FRONTEND_PORT}`);
+  // Skip the marketing landing page — anyone opening the installed desktop
+  // app has already downloaded it, so start on a branded splash screen with
+  // Create Account / Sign In (it redirects to the dashboard itself if a
+  // session already exists).
+  log(`Loading app at http://localhost:${FRONTEND_PORT}/start`);
+  mainWindow.loadURL(`http://localhost:${FRONTEND_PORT}/start`);
 }
 
 // ── App lifecycle ──────────────────────────────────────────────────────────
