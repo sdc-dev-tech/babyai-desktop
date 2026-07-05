@@ -1,6 +1,6 @@
 {
   "name": "babyai-desktop",
-  "version": "1.2.46",
+  "version": "1.2.47",
   "description": "babyAI Desktop — ERP Intelligence for BUSY & Tally",
   "main": "src/main.js",
   "scripts": {
