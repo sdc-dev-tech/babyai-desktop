@@ -115,9 +115,18 @@ function setupBackOverlay(win) {
     backOverlayWin.setBounds({ x: bounds.x + 10, y: bounds.y + 10, width: 48, height: 48 });
   }
 
+  function isOnExternalPage() {
+    try {
+      const hostname = new URL(win.webContents.getURL()).hostname;
+      return hostname !== 'localhost' && hostname !== '127.0.0.1';
+    } catch {
+      return false;
+    }
+  }
+
   function refreshVisibility() {
     if (!backOverlayWin || backOverlayWin.isDestroyed()) return;
-    if (win.webContents.canGoBack()) {
+    if (isOnExternalPage() && win.webContents.canGoBack()) {
       positionOverlay();
       backOverlayWin.showInactive();
     } else {
