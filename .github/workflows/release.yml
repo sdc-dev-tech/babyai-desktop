@@ -163,10 +163,17 @@ jobs:
             Write-Host "standalone MISSING — next.config output may not be set"
             exit 1
           }
-          # Copy standalone output to vendor/frontend
+          # Next.js 15+ places standalone output in a subdirectory named after
+          # the project (babyAI/); fall back to root if the old layout is used.
+          $standaloneRoot = if (Test-Path ".next\standalone\babyAI") {
+            ".next\standalone\babyAI"
+          } else {
+            ".next\standalone"
+          }
+          Write-Host "Copying standalone from: $standaloneRoot"
           New-Item -ItemType Directory -Force -Path "..\vendor\frontend" | Out-Null
-          Copy-Item ".next\standalone\*" "..\vendor\frontend" -Recurse -Force
-          Copy-Item ".next\static"       "..\vendor\frontend\.next\static" -Recurse -Force
+          Copy-Item "$standaloneRoot\*" "..\vendor\frontend" -Recurse -Force
+          Copy-Item ".next\static"      "..\vendor\frontend\.next\static" -Recurse -Force
           if (Test-Path "public") {
             Copy-Item "public" "..\vendor\frontend\public" -Recurse -Force
           }
