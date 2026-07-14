@@ -40,28 +40,30 @@
     }
     .fill {
       height: 100%;
-      width: 30%;
+      width: 5%;
       background: #f97316;
       border-radius: 99px;
-      animation: slide 1.6s ease-in-out infinite;
-    }
-    @keyframes slide {
-      0%   { transform: translateX(-100%); }
-      50%  { transform: translateX(250%); }
-      100% { transform: translateX(600%); }
+      transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
     }
     .status {
       margin-top: 18px;
       font-size: 0.72rem;
-      color: #b0b0a8;
+      color: #6b6b65;
       font-family: 'SF Mono', 'Cascadia Code', monospace;
+      transition: opacity 0.2s;
     }
   </style>
 </head>
 <body>
   <div class="logo">baby<span>AI</span></div>
   <div class="sub">ERP Intelligence</div>
-  <div class="bar"><div class="fill"></div></div>
-  <div class="status">Starting services…</div>
+  <div class="bar"><div class="fill" id="fill"></div></div>
+  <div class="status" id="status">Initialising…</div>
+  <script>
+    function setProgress(pct, msg) {
+      document.getElementById('fill').style.width = pct + '%';
+      document.getElementById('status').textContent = msg;
+    }
+  </script>
 </body>
 </html>

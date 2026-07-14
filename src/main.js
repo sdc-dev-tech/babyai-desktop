@@ -596,6 +596,17 @@ async function waitAndLoad() {
   mainWindow.loadURL(`http://localhost:${FRONTEND_PORT}/start`);
 }
 
+// ── Status updates to loading screen ──────────────────────────────────────
+function sendStatus(msg, pct) {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.executeJavaScript(
+        `typeof setProgress === 'function' && setProgress(${pct}, ${JSON.stringify(msg)})`
+      ).catch(() => {});
+    }
+  } catch (_) {}
+}
+
 // ── App lifecycle ──────────────────────────────────────────────────────────
 // ── IPC: open external URL ─────────────────────────────────────────────────
 ipcMain.on('open-external', (_, url) => shell.openExternal(url));
@@ -603,10 +614,28 @@ ipcMain.on('open-external', (_, url) => shell.openExternal(url));
 app.whenReady().then(async () => {
   createWindow();
   try {
-    await installAccessDatabaseEngine();
-    await startPostgres();
-    await startBackend();
-    await startFrontend();
+    sendStatus('Starting database…', 10);
+
+    // Start Postgres, frontend, and Access DB Engine in parallel — they are independent.
+    // Backend must wait for Postgres, so it runs sequentially after in the same promise chain.
+    const [,] = await Promise.all([
+      // Chain: Postgres → Backend (backend needs DB)
+      (async () => {
+        await startPostgres();
+        sendStatus('Starting AI engine…', 50);
+        await startBackend();
+        sendStatus('Almost ready…', 80);
+      })(),
+      // Independent: Next.js frontend
+      (async () => {
+        sendStatus('Starting interface…', 10);
+        await startFrontend();
+      })(),
+      // Independent: Access DB Engine install (non-fatal)
+      installAccessDatabaseEngine().catch(e => log(`ADE install warning: ${e.message}`)),
+    ]);
+
+    sendStatus('Loading app…', 95);
     await waitAndLoad();
   } catch (err) {
     log(`Startup error: ${err}`);
