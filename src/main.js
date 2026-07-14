@@ -651,10 +651,19 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+function killTree(proc) {
+  if (!proc) return;
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/F', '/T', '/PID', String(proc.pid)], { stdio: 'ignore' });
+  } else {
+    proc.kill('SIGTERM');
+  }
+}
+
 app.on('before-quit', () => {
   log('Shutting down services...');
-  frontendProc?.kill();
-  backendProc?.kill();
+  killTree(frontendProc);
+  killTree(backendProc);
   if (process.platform === 'win32') {
     spawn('net', ['stop', PG_SVC_NAME], { stdio: 'ignore' });
   } else if (pgProc) {
