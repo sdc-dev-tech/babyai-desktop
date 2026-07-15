@@ -28,6 +28,7 @@ let pgProc          = null;
 let backendProc     = null;
 let frontendProc    = null;
 let mainWindow      = null;
+let appQuitting     = false;
 let backOverlayWin  = null;
 
 // ── Logging ────────────────────────────────────────────────────────────────
@@ -430,6 +431,12 @@ async function startPostgresWindowsDirect() {
       if (s.includes('database system is ready')) resolve();
     });
     pgProc.on('error', (e) => { log(`postgres.exe spawn error: ${e.message}`); resolve(); });
+    pgProc.on('close', (code) => {
+      if (!appQuitting) {
+        log(`postgres.exe exited unexpectedly (code ${code}) — restarting in 2s…`);
+        setTimeout(() => startPostgresWindowsDirect().catch(e => log(`pg restart failed: ${e.message}`)), 2000);
+      }
+    });
     // Give it up to 10 s; resolve early if port becomes available
     waitForPort(PG_PORT, 10000).then(resolve);
   });
@@ -661,6 +668,7 @@ function killTree(proc) {
 }
 
 app.on('before-quit', () => {
+  appQuitting = true;
   log('Shutting down services...');
   killTree(frontendProc);
   killTree(backendProc);
