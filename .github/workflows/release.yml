@@ -24,7 +24,7 @@ jobs:
           repository: sdc-dev-tech/babyAI
           token: ${{ secrets.GH_PAT }}
           path: babyAI
-          ref: ai_insightes_fr
+          ref: forecast_improvements_fr
 
       # ── 3. Checkout backend ───────────────────────────────────────────────
       - name: Checkout babyAI-backend
@@ -33,7 +33,7 @@ jobs:
           repository: sdc-dev-tech/babyAI-backend
           token: ${{ secrets.GH_PAT }}
           path: babyAI-backend
-          ref: ai_insightes_be
+          ref: forecast_improvements_be
 
       # ── 4. Set up Node for Electron + Next.js ─────────────────────────────
       - name: Set up Node 20
