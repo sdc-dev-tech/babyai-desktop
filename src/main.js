@@ -401,12 +401,16 @@ async function startPostgresWindowsService() {
         log('sc start failed, trying PowerShell Start-Service...');
         await runCmd('powershell', ['-NoProfile', '-NonInteractive', '-Command', `Start-Service -Name '${PG_SVC_NAME}'`]);
       }
-      // Check port — if still not up after service attempt, signal failure
-      const sock = net.createConnection({ port: PG_PORT, host: '127.0.0.1' });
-      sock.setTimeout(5000);
-      sock.once('connect', () => { sock.destroy(); log('Service start confirmed on port'); resolve(true); });
-      sock.once('error', () => { sock.destroy(); log('Service started but port not responding'); resolve(false); });
-      sock.once('timeout', () => { sock.destroy(); resolve(false); });
+      // Give the service up to 20 s to bring Postgres up — pg_ctl runservice adds
+      // extra latency vs direct spawn so 5 s was too tight on slower machines.
+      const ready = await waitForPort(PG_PORT, 20000);
+      if (ready !== false) {
+        log('Service start confirmed on port');
+        resolve(true);
+      } else {
+        log('Service started but port not responding after 20 s');
+        resolve(false);
+      }
     });
     proc.on('error', () => resolve(false));
   });
@@ -425,14 +429,25 @@ async function startPostgresWindowsDirect() {
       env: pgEnv2,
     });
     pgProc.stdout?.on('data', d => log(`pg: ${d}`));
+    let adminRejected = false;
     pgProc.stderr?.on('data', d => {
       const s = d.toString();
       log(`pg: ${s}`);
       if (s.includes('database system is ready')) resolve();
+      if (s.includes('administrative permissions')) adminRejected = true;
     });
     pgProc.on('error', (e) => { log(`postgres.exe spawn error: ${e.message}`); resolve(); });
     pgProc.on('close', (code) => {
       if (!appQuitting) {
+        if (adminRejected) {
+          // Running as Administrator — retry via the Windows service which runs
+          // Postgres under NetworkService (an unprivileged account).
+          log('postgres.exe rejected admin user — retrying via Windows service');
+          startPostgresWindowsService()
+            .then(ok => { if (!ok) log('Service retry also failed — Postgres unavailable'); })
+            .catch(e => log(`Service retry error: ${e.message}`));
+          return;
+        }
         log(`postgres.exe exited unexpectedly (code ${code}) — restarting in 2s…`);
         setTimeout(() => startPostgresWindowsDirect().catch(e => log(`pg restart failed: ${e.message}`)), 2000);
       }
