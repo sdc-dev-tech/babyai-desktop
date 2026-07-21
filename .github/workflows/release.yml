@@ -245,6 +245,8 @@ jobs:
             --collect-data certifi `
             --hidden-import ssl `
             --hidden-import certifi `
+            --hidden-import multipart `
+            --collect-all multipart `
             "run.py"
 
           # Copy output back to D: workspace
