@@ -565,6 +565,9 @@ async function startFrontend() {
       PORT:                      String(FRONTEND_PORT),
       NEXT_PUBLIC_API_URL:       `http://127.0.0.1:${BACKEND_PORT}`,
       HOSTNAME:                  '127.0.0.1',
+      // Public confirmation-page deployment — email verification links must
+      // point here (not localhost) so they work when opened from any device.
+      NEXT_PUBLIC_APP_URL:       'https://baby-ai-azure.vercel.app',
       // Supabase — server-side vars not baked at build time, must be injected at runtime
       NEXT_PUBLIC_SUPABASE_URL:  'https://hnfkplodhuycahrxqxde.supabase.co',
       NEXT_PUBLIC_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhuZmtwbG9kaHV5Y2FocnhxeGRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MjYyNjUsImV4cCI6MjA5NTAwMjI2NX0.4XdKy-0Txh7uVqKGdT9VA-Jn1PnqzuetqhfHrNSBg0s',
