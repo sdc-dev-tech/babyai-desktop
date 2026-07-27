@@ -254,7 +254,22 @@ jobs:
           Copy-Item "C:\babyai-dist\api.exe" "D:\a\babyai-desktop\babyai-desktop\vendor\backend\api.exe" -Force
           Write-Host "Backend frozen"
 
-      # ── 9. Install Electron deps & build installer ────────────────────────
+      # ── 9. Write .env so it gets bundled via extraResources ──────────────────
+      - name: Write .env for packaging
+        shell: pwsh
+        env:
+          SUPABASE_URL:           ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY:      ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MAIL_RELAY_SECRET:      ${{ secrets.MAIL_RELAY_SECRET }}
+        run: |
+          "SUPABASE_URL=$env:SUPABASE_URL" | Out-File -FilePath ".env" -Encoding UTF8
+          "SUPABASE_ANON_KEY=$env:SUPABASE_ANON_KEY" | Add-Content -Path ".env" -Encoding UTF8
+          "SUPABASE_SERVICE_ROLE_KEY=$env:SUPABASE_SERVICE_ROLE_KEY" | Add-Content -Path ".env" -Encoding UTF8
+          "MAIL_RELAY_SECRET=$env:MAIL_RELAY_SECRET" | Add-Content -Path ".env" -Encoding UTF8
+          Write-Host ".env written"
+
+      # ── 10. Install Electron deps & build installer ───────────────────────
       - name: Install Electron dependencies
         run: npm install
 
