@@ -25,6 +25,10 @@
     ],
     "extraResources": [
       {
+        "from": ".env",
+        "to": ".env"
+      },
+      {
         "from": "vendor/backend",
         "to": "backend",
         "filter": [
@@ -96,6 +100,7 @@
     }
   },
   "dependencies": {
+    "dotenv": "^16.4.5",
     "electron-store": "^8.1.0",
     "node-fetch": "^2.7.0"
   },

@@ -23,6 +23,14 @@ const PG_DIR       = path.join(RESOURCES, 'postgres');
 const DATA_DIR     = path.join(app.getPath('userData'), 'pgdata');
 const VC_REDIST    = path.join(RESOURCES, 'vc_redist.x64.exe');
 
+
+require('dotenv').config({
+  path: app.isPackaged ? path.join(RESOURCES, '.env') : path.join(__dirname, '..', '.env'),
+});
+const SUPABASE_URL      = process.env.SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+const MAIL_RELAY_SECRET = process.env.MAIL_RELAY_SECRET || '';
+
 // ── Process handles ────────────────────────────────────────────────────────
 let pgProc          = null;
 let backendProc     = null;
@@ -521,9 +529,19 @@ async function startBackend() {
       PORT:                      String(BACKEND_PORT),
       HOST:                      '127.0.0.1',
       ANTHROPIC_API_KEY:         store.get('anthropic_key', ''),
-      SUPABASE_URL:              'https://hnfkplodhuycahrxqxde.supabase.co',
-      SUPABASE_SERVICE_ROLE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhuZmtwbG9kaHV5Y2FocnhxeGRlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTQyNjI2NSwiZXhwIjoyMDk1MDAyMjY1fQ.64U7rIeS7GhpiSOdyuPcIi_iUM9T5ahfeT4ypGo0Abk',
-      ENCRYPTION_KEY:            'Rs_5lb70Js44x4KGRylpKnRBZ21usGdoSKQQe1f-KMk=',
+      // Public by design — same values as NEXT_PUBLIC_SUPABASE_URL/ANON_KEY
+      // below, read from the local .env (see ../.env.example).
+      // SUPABASE_SERVICE_ROLE_KEY deliberately does NOT appear here: the
+      // backend scopes every Supabase call to the logged-in user's own JWT
+      // (api/company_db.py's get_user_client()) and Row Level Security
+      // enforces the boundary, instead of shipping a god-mode key to every
+      // install. CHAT_USER_KEY / CONFIG_USER_KEY (chat + saved-credential
+      // encryption) are absent for the same reason — both fall back to the
+      // derive-chat-key / derive-config-key Edge Functions when unset, so
+      // this process only ever ends up with ITS OWN user's derived key,
+      // never the master secret. See api/chat_privacy.py, api/encryption.py.
+      SUPABASE_URL:              SUPABASE_URL,
+      SUPABASE_ANON_KEY:         SUPABASE_ANON_KEY,
       MDB_TOOLS_DIR:             path.join(RESOURCES, 'mdbtools'),
     };
 
@@ -568,15 +586,21 @@ async function startFrontend() {
       // Public confirmation-page deployment — email verification links must
       // point here (not localhost) so they work when opened from any device.
       NEXT_PUBLIC_APP_URL:       'https://baby-ai-azure.vercel.app',
-      // Supabase — server-side vars not baked at build time, must be injected at runtime
-      NEXT_PUBLIC_SUPABASE_URL:  'https://hnfkplodhuycahrxqxde.supabase.co',
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhuZmtwbG9kaHV5Y2FocnhxeGRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MjYyNjUsImV4cCI6MjA5NTAwMjI2NX0.4XdKy-0Txh7uVqKGdT9VA-Jn1PnqzuetqhfHrNSBg0s',
-      SUPABASE_SERVICE_ROLE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhuZmtwbG9kaHV5Y2FocnhxeGRlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTQyNjI2NSwiZXhwIjoyMDk1MDAyMjY1fQ.64U7rIeS7GhpiSOdyuPcIi_iUM9T5ahfeT4ypGo0Abk',
-      // SMTP — for confirmation emails
-      SMTP_HOST: 'smtp.gmail.com',
-      SMTP_PORT: '587',
-      SMTP_USER: 'sales.saraldyes@gmail.com',
-      SMTP_PASS: 'qdrk mvhu mazh frqq',
+      // Supabase — anon key only, safe to be public (same value ships in
+      // every Supabase web app's client bundle by design). The service-role
+      // key used to be here too — removed. Admin operations (signup,
+      // password reset OTP) now go through the `signup` Edge Function
+      // instead (see app/lib/serverAuth.ts), which holds that key as a
+      // Supabase Function secret, never shipped in this desktop build.
+      NEXT_PUBLIC_SUPABASE_URL:  SUPABASE_URL,
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: SUPABASE_ANON_KEY,
+      // No SMTP_* here on purpose — app/lib/mailer.ts only sends directly
+      // when SMTP_PASS is present in its own env (true on the Vercel
+      // deployment). Here, with SMTP_PASS unset, it relays through the
+      // `send-email` Edge Function instead, authenticated with this one
+      // rotatable secret rather than the real Gmail password. See
+      // babyAI-backend/supabase/functions/send-email.
+      MAIL_RELAY_SECRET:        MAIL_RELAY_SECRET,
     };
 
     // next start via bundled node
