@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } = require('electron');
 const path   = require('path');
 const { spawn, execFile } = require('child_process');
 const fs     = require('fs');
@@ -157,6 +157,35 @@ function setupBackOverlay(win) {
 
 ipcMain.on('nav-go-back', () => {
   if (mainWindow && mainWindow.webContents.canGoBack()) mainWindow.webContents.goBack();
+});
+
+// ── Chat key material — stored encrypted in OS keychain via safeStorage ────
+// Key is stored as a hex string so it survives the encrypt/decrypt round-trip
+// through safeStorage (which works on Buffer/Uint8Array, not raw bytes).
+const CHAT_KEY_STORE_KEY = 'chat_key_material';
+
+ipcMain.handle('chat-key-store', (_, hexKey) => {
+  if (!safeStorage.isEncryptionAvailable()) return false;
+  try {
+    const encrypted = safeStorage.encryptString(hexKey);
+    store.set(CHAT_KEY_STORE_KEY, encrypted.toString('base64'));
+    return true;
+  } catch (e) {
+    log(`chat-key-store error: ${e.message}`);
+    return false;
+  }
+});
+
+ipcMain.handle('chat-key-load', () => {
+  if (!safeStorage.isEncryptionAvailable()) return null;
+  try {
+    const b64 = store.get(CHAT_KEY_STORE_KEY);
+    if (!b64) return null;
+    return safeStorage.decryptString(Buffer.from(b64, 'base64'));
+  } catch (e) {
+    log(`chat-key-load error: ${e.message}`);
+    return null;
+  }
 });
 
 // ── Init Postgres data directory ───────────────────────────────────────────
