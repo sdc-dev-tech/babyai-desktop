@@ -167,7 +167,6 @@ jobs:
           NEXT_PUBLIC_API_URL: "http://127.0.0.1:8000"
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           npm install
           npx next build
@@ -260,12 +259,10 @@ jobs:
         env:
           SUPABASE_URL:           ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY:      ${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           MAIL_RELAY_SECRET:      ${{ secrets.MAIL_RELAY_SECRET }}
         run: |
           "SUPABASE_URL=$env:SUPABASE_URL" | Out-File -FilePath ".env" -Encoding UTF8
           "SUPABASE_ANON_KEY=$env:SUPABASE_ANON_KEY" | Add-Content -Path ".env" -Encoding UTF8
-          "SUPABASE_SERVICE_ROLE_KEY=$env:SUPABASE_SERVICE_ROLE_KEY" | Add-Content -Path ".env" -Encoding UTF8
           "MAIL_RELAY_SECRET=$env:MAIL_RELAY_SECRET" | Add-Content -Path ".env" -Encoding UTF8
           Write-Host ".env written"
 

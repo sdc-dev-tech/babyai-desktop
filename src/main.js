@@ -159,6 +159,52 @@ ipcMain.on('nav-go-back', () => {
   if (mainWindow && mainWindow.webContents.canGoBack()) mainWindow.webContents.goBack();
 });
 
+// ── Communications (WhatsApp) settings ────────────────────────────────────
+const COMM_SETTINGS_KEYS = [
+  'wa_access_token',       // sensitive — stored encrypted
+  'wa_phone_number_id',
+  'wa_admin_number',
+  'wa_verify_token',
+  'support_phone',
+];
+
+function readCommSettings() {
+  const s = {};
+  for (const key of COMM_SETTINGS_KEYS) {
+    if (key === 'wa_access_token') {
+      try {
+        const b64 = store.get(key);
+        s[key] = b64 && safeStorage.isEncryptionAvailable()
+          ? safeStorage.decryptString(Buffer.from(b64, 'base64'))
+          : (b64 || '');
+      } catch { s[key] = ''; }
+    } else {
+      s[key] = store.get(key, '');
+    }
+  }
+  return s;
+}
+
+ipcMain.handle('get-comm-settings', () => readCommSettings());
+
+ipcMain.handle('set-comm-settings', (_, settings) => {
+  for (const key of COMM_SETTINGS_KEYS) {
+    const val = settings[key] ?? '';
+    if (key === 'wa_access_token') {
+      try {
+        if (val && safeStorage.isEncryptionAvailable()) {
+          store.set(key, safeStorage.encryptString(val).toString('base64'));
+        } else {
+          store.set(key, val);
+        }
+      } catch (e) { log(`set-comm-settings error for ${key}: ${e.message}`); }
+    } else {
+      store.set(key, val);
+    }
+  }
+  return true;
+});
+
 // ── Chat key material — stored encrypted in OS keychain via safeStorage ────
 // Key is stored as a hex string so it survives the encrypt/decrypt round-trip
 // through safeStorage (which works on Buffer/Uint8Array, not raw bytes).
@@ -572,6 +618,16 @@ async function startBackend() {
       SUPABASE_URL:              SUPABASE_URL,
       SUPABASE_ANON_KEY:         SUPABASE_ANON_KEY,
       MDB_TOOLS_DIR:             path.join(RESOURCES, 'mdbtools'),
+      ...((() => {
+        const c = readCommSettings();
+        return {
+          WHATSAPP_ACCESS_TOKEN:   c.wa_access_token,
+          WHATSAPP_PHONE_NUMBER_ID:c.wa_phone_number_id,
+          WHATSAPP_ADMIN_NUMBER:   c.wa_admin_number,
+          WHATSAPP_VERIFY_TOKEN:   c.wa_verify_token,
+          SUPPORT_PHONE:           c.support_phone,
+        };
+      })()),
     };
 
     log(`api.exe exists: ${fs.existsSync(exe)}`);
