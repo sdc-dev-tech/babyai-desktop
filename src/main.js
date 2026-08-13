@@ -185,14 +185,47 @@ function readCommSettings() {
   return s;
 }
 
-ipcMain.handle('get-comm-settings', () => readCommSettings());
+// The renderer must never receive the real access token — readCommSettings()
+// returns the decrypted value for internal use only (startBackend() needs
+// the real value to pass to the Python backend's env). What the Settings UI
+// gets back is redacted to a blank string plus a flag saying whether one is
+// already saved, so there's no way to view a previously-saved token through
+// the app (Settings page, React state, or dev tools) — only overwrite it.
+ipcMain.handle('get-comm-settings', () => {
+  const s = readCommSettings();
+  return { ...s, wa_access_token: '', wa_access_token_set: !!s.wa_access_token };
+});
 
-ipcMain.handle('set-comm-settings', (_, settings) => {
+// The backend only reads WHATSAPP_*/SUPPORT_PHONE from its process env once,
+// at spawn time (see startBackend()) — an OS process's env can't be changed
+// after it's running. So saving new comm settings has to restart just the
+// backend child process for them to take effect; previously this required
+// restarting the whole app (which also respawns Postgres/frontend for no
+// reason). Waits for the old process to actually exit before respawning so
+// the new one doesn't fail to bind BACKEND_PORT (EADDRINUSE).
+function restartBackend() {
+  return new Promise((resolve) => {
+    if (!backendProc) { startBackend().then(resolve).catch(resolve); return; }
+    const proc = backendProc;
+    let settled = false;
+    const onDone = () => { if (settled) return; settled = true; startBackend().then(resolve).catch(resolve); };
+    proc.once('close', onDone);
+    killTree(proc);
+    // Fallback in case 'close' never fires (e.g. taskkill already reaped it)
+    setTimeout(onDone, 5000);
+  });
+}
+
+ipcMain.handle('set-comm-settings', async (_, settings) => {
   for (const key of COMM_SETTINGS_KEYS) {
     const val = settings[key] ?? '';
     if (key === 'wa_access_token') {
+      // The field is never pre-filled with the real token (see get-comm-settings
+      // above), so a blank value here means "leave the saved token unchanged",
+      // not "clear it" — only overwrite when the user actually typed a new one.
+      if (!val) continue;
       try {
-        if (val && safeStorage.isEncryptionAvailable()) {
+        if (safeStorage.isEncryptionAvailable()) {
           store.set(key, safeStorage.encryptString(val).toString('base64'));
         } else {
           store.set(key, val);
@@ -202,6 +235,7 @@ ipcMain.handle('set-comm-settings', (_, settings) => {
       store.set(key, val);
     }
   }
+  await restartBackend();
   return true;
 });
 
@@ -617,6 +651,11 @@ async function startBackend() {
       // never the master secret. See api/chat_privacy.py, api/encryption.py.
       SUPABASE_URL:              SUPABASE_URL,
       SUPABASE_ANON_KEY:         SUPABASE_ANON_KEY,
+      // Lets communications_service.py send customer emails (payment
+      // reminders, invoice PDFs) through the same send-email relay
+      // app/lib/mailer.ts already uses for account emails — see that
+      // function's header comment. No local SMTP password needed here.
+      MAIL_RELAY_SECRET:         MAIL_RELAY_SECRET,
       MDB_TOOLS_DIR:             path.join(RESOURCES, 'mdbtools'),
       ...((() => {
         const c = readCommSettings();
@@ -794,17 +833,32 @@ function killTree(proc) {
   }
 }
 
-app.on('before-quit', () => {
+async function clearStaleSyncLogs() {
+  try {
+    // Tell the backend to mark any running sync logs as failed before we kill it
+    await fetch(`http://127.0.0.1:${BACKEND_PORT}/api/setup/clear-stale-syncs`, {
+      method: 'POST', signal: AbortSignal.timeout(3000),
+    });
+    log('Cleared stale sync logs on quit');
+  } catch (_) { /* backend may already be dead — ignore */ }
+}
+
+app.on('before-quit', (event) => {
+  if (appQuitting) return;
+  event.preventDefault();
   appQuitting = true;
   log('Shutting down services...');
-  killTree(frontendProc);
-  killTree(backendProc);
-  if (process.platform === 'win32') {
-    spawn('net', ['stop', PG_SVC_NAME], { stdio: 'ignore' });
-  } else if (pgProc) {
-    const pgctl = path.join(PG_DIR, 'bin', 'pg_ctl');
-    execFile(pgctl, ['-D', DATA_DIR, 'stop', '-m', 'fast'], () => pgProc?.kill());
-  }
+  clearStaleSyncLogs().finally(() => {
+    killTree(frontendProc);
+    killTree(backendProc);
+    if (process.platform === 'win32') {
+      spawn('net', ['stop', PG_SVC_NAME], { stdio: 'ignore' });
+    } else if (pgProc) {
+      const pgctl = path.join(PG_DIR, 'bin', 'pg_ctl');
+      execFile(pgctl, ['-D', DATA_DIR, 'stop', '-m', 'fast'], () => pgProc?.kill());
+    }
+    app.exit(0);
+  });
 });
 
 // ── IPC: open log file location ────────────────────────────────────────────
