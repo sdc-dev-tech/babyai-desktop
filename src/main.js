@@ -8,9 +8,30 @@ const Store  = require('electron-store');
 const store = new Store();
 
 // ── Ports ──────────────────────────────────────────────────────────────────
-const FRONTEND_PORT = 3000;
-const BACKEND_PORT  = 8000;
-const PG_PORT       = 5433; // avoid clash with any existing local postgres
+// On a multi-user server (RDS/Terminal Server) each session needs its own
+// ports. These are resolved to free ports at startup via assignPorts().
+let FRONTEND_PORT = 3000;
+let BACKEND_PORT  = 8000;
+let PG_PORT       = 5433;
+
+function findFreePort(start) {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on('error', () => findFreePort(start + 1).then(resolve, reject));
+    server.listen(start, '127.0.0.1', () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+async function assignPorts() {
+  PG_PORT       = await findFreePort(5433);
+  BACKEND_PORT  = await findFreePort(8000);
+  FRONTEND_PORT = await findFreePort(3000);
+  log(`Ports assigned — PG: ${PG_PORT}, Backend: ${BACKEND_PORT}, Frontend: ${FRONTEND_PORT}`);
+}
 
 // ── Resource paths (works both in dev and packaged) ────────────────────────
 const RESOURCES = app.isPackaged
@@ -333,9 +354,7 @@ async function runInitdb() {
     proc.on('close', (code) => {
       if (code === 0) {
         log('Postgres data directory initialised');
-        const conf = path.join(DATA_DIR, 'postgresql.conf');
-        fs.appendFileSync(conf, `\nport = ${PG_PORT}\n`);
-        log(`Set port = ${PG_PORT} in postgresql.conf`);
+        setPgConfPort();
         resolve();
       } else {
         reject(Object.assign(new Error(`initdb exited with code ${code}`), { exitCode: code }));
@@ -344,9 +363,22 @@ async function runInitdb() {
   });
 }
 
+function setPgConfPort() {
+  // Always overwrite the port line so concurrent RDS users each get their
+  // own assigned port rather than re-using a port another session holds.
+  const conf = path.join(DATA_DIR, 'postgresql.conf');
+  if (!fs.existsSync(conf)) return;
+  let text = fs.readFileSync(conf, 'utf8');
+  text = text.replace(/^\s*port\s*=.*$/m, `port = ${PG_PORT}`);
+  if (!/^\s*port\s*=/m.test(text)) text += `\nport = ${PG_PORT}\n`;
+  fs.writeFileSync(conf, text);
+  log(`Set port = ${PG_PORT} in postgresql.conf`);
+}
+
 async function initPostgres() {
   if (fs.existsSync(path.join(DATA_DIR, 'PG_VERSION'))) {
     log('Postgres data dir already initialised');
+    setPgConfPort();
     return;
   }
   if (fs.existsSync(DATA_DIR)) {
@@ -791,6 +823,7 @@ ipcMain.on('open-external', (_, url) => shell.openExternal(url));
 app.whenReady().then(async () => {
   createWindow();
   try {
+    await assignPorts();
     sendStatus('Starting database…', 10);
 
     // Start Postgres, frontend, and Access DB Engine in parallel — they are independent.
