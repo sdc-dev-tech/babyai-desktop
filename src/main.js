@@ -193,7 +193,7 @@ function readCommSettings() {
 // the app (Settings page, React state, or dev tools) — only overwrite it.
 ipcMain.handle('get-comm-settings', () => {
   const s = readCommSettings();
-  return { ...s, wa_access_token: '', wa_access_token_set: !!s.wa_access_token };
+  return { ...s, wa_access_token: '', wa_access_token_set: !!s.wa_access_token, wa_phone_number_id: '', wa_phone_number_id_set: !!s.wa_phone_number_id };
 });
 
 // The backend only reads WHATSAPP_*/SUPPORT_PHONE from its process env once,
@@ -231,6 +231,10 @@ ipcMain.handle('set-comm-settings', async (_, settings) => {
           store.set(key, val);
         }
       } catch (e) { log(`set-comm-settings error for ${key}: ${e.message}`); }
+    } else if (key === 'wa_phone_number_id') {
+      // Same redaction pattern as wa_access_token — blank means keep existing
+      if (!val) continue;
+      store.set(key, val);
     } else {
       store.set(key, val);
     }
