@@ -375,9 +375,51 @@ function setPgConfPort() {
   log(`Set port = ${PG_PORT} in postgresql.conf`);
 }
 
+async function getPgBinaryMajorVersion() {
+  const postgres = path.join(PG_DIR, 'bin', process.platform === 'win32' ? 'postgres.exe' : 'postgres');
+  return new Promise((resolve) => {
+    let out = '';
+    const proc = spawn(postgres, ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    proc.stdout?.on('data', d => { out += d.toString(); });
+    proc.on('close', () => {
+      // e.g. "postgres (PostgreSQL) 16.2"
+      const m = out.match(/(\d+)\.\d/);
+      resolve(m ? parseInt(m[1], 10) : null);
+    });
+    proc.on('error', () => resolve(null));
+  });
+}
+
 async function initPostgres() {
   if (fs.existsSync(path.join(DATA_DIR, 'PG_VERSION'))) {
     log('Postgres data dir already initialised');
+
+    // Check for version mismatch — a new install may bundle a different PG major
+    // version than the one that created the existing data directory.
+    const dataDirVersion = parseInt(fs.readFileSync(path.join(DATA_DIR, 'PG_VERSION'), 'utf8').trim(), 10);
+    const binaryVersion  = await getPgBinaryMajorVersion();
+    log(`PG version check — data dir: ${dataDirVersion}, binary: ${binaryVersion}`);
+
+    if (binaryVersion && dataDirVersion && binaryVersion !== dataDirVersion) {
+      log(`PG version mismatch (data=${dataDirVersion}, binary=${binaryVersion}) — prompting user to reset`);
+      const choice = await dialog.showMessageBox({
+        type:    'warning',
+        title:   'Database Reset Required',
+        message: `Your database was created with PostgreSQL ${dataDirVersion}, but this version of babyAI uses PostgreSQL ${binaryVersion}.`,
+        detail:  'The database needs to be reset. All data will be re-synced from your source files on next sync.',
+        buttons: ['Reset Database', 'Quit'],
+        defaultId: 0,
+        cancelId:  1,
+      });
+      if (choice.response === 1) { app.quit(); return; }
+
+      log('User confirmed reset — wiping data directory...');
+      fs.rmSync(DATA_DIR, { recursive: true, force: true });
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      await runInitdb();
+      return;
+    }
+
     setPgConfPort();
     return;
   }
@@ -583,11 +625,25 @@ async function startPostgresWindowsDirect() {
     });
     pgProc.stdout?.on('data', d => log(`pg: ${d}`));
     let adminRejected = false;
+    let fatalError    = false;
     pgProc.stderr?.on('data', d => {
       const s = d.toString();
       log(`pg: ${s}`);
       if (s.includes('database system is ready')) resolve();
       if (s.includes('administrative permissions')) adminRejected = true;
+      // Unrecoverable errors — stop the restart loop and alert the user
+      if (s.includes('incompatible with server') || s.includes('database files are incompatible') ||
+          s.includes('could not open file') || s.includes('database system identifier differs')) {
+        fatalError = true;
+        log('postgres.exe fatal error detected — stopping restart loop');
+        dialog.showMessageBox({
+          type:    'error',
+          title:   'Database Error',
+          message: 'PostgreSQL could not start due to a database error.',
+          detail:  s.trim() + '\n\nPlease reinstall babyAI or contact support.',
+          buttons: ['OK'],
+        });
+      }
     });
     pgProc.on('error', (e) => { log(`postgres.exe spawn error: ${e.message}`); resolve(); });
     pgProc.on('close', (code) => {
@@ -599,6 +655,10 @@ async function startPostgresWindowsDirect() {
           startPostgresWindowsService()
             .then(ok => { if (!ok) log('Service retry also failed — Postgres unavailable'); })
             .catch(e => log(`Service retry error: ${e.message}`));
+          return;
+        }
+        if (fatalError) {
+          log('postgres.exe exited with fatal error — not restarting');
           return;
         }
         log(`postgres.exe exited unexpectedly (code ${code}) — restarting in 2s…`);
