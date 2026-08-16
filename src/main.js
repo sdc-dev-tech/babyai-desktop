@@ -27,7 +27,7 @@ function findFreePort(start) {
 }
 
 async function assignPorts() {
-  PG_PORT       = await findFreePort(5433);
+  PG_PORT       = await findFreePort(5432);
   BACKEND_PORT  = await findFreePort(8000);
   FRONTEND_PORT = await findFreePort(3000);
   log(`Ports assigned — PG: ${PG_PORT}, Backend: ${BACKEND_PORT}, Frontend: ${FRONTEND_PORT}`);
