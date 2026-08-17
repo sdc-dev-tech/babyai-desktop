@@ -330,6 +330,15 @@ ipcMain.handle('load-auth-tokens', () => ({
   user:         (() => { try { return JSON.parse(store.get('auth_user', 'null')); } catch { return null; } })(),
 }));
 
+// Synchronous version used by preload.js to inject tokens before React boots.
+// ipcRenderer.sendSync() requires ipcMain.on (not ipcMain.handle).
+ipcMain.on('get-auth-tokens-sync', (event) => {
+  event.returnValue = {
+    accessToken:  store.get('auth_access_token',  null),
+    refreshToken: store.get('auth_refresh_token', null),
+  };
+});
+
 ipcMain.handle('clear-auth-tokens', () => {
   store.delete('auth_access_token');
   store.delete('auth_refresh_token');
@@ -916,26 +925,8 @@ async function waitAndLoad() {
     }
   }
 
-  // Skip the marketing landing page — anyone opening the installed desktop
-  // app has already downloaded it, so start on a branded splash screen with
-  // Create Account / Sign In (it redirects to the dashboard itself if a
-  // session already exists).
-  // Re-inject persisted auth tokens into localStorage before React boots.
-  // This ensures the session survives frontend port changes across restarts.
-  const stored = {
-    accessToken:  store.get('auth_access_token',  null),
-    refreshToken: store.get('auth_refresh_token', null),
-  };
-  if (stored.accessToken) {
-    mainWindow.webContents.once('did-finish-load', () => {
-      mainWindow.webContents.executeJavaScript(`
-        if (!localStorage.getItem('access_token') && ${JSON.stringify(stored.accessToken)}) {
-          localStorage.setItem('access_token',  ${JSON.stringify(stored.accessToken)});
-          localStorage.setItem('refresh_token', ${JSON.stringify(stored.refreshToken || '')});
-        }
-      `).catch(() => {});
-    });
-  }
+  // Token injection is handled in preload.js via ipcRenderer.sendSync —
+  // it runs before any page JS so getSession() sees the token on first call.
   log(`Loading app at http://localhost:${FRONTEND_PORT}/start`);
   mainWindow.loadURL(`http://localhost:${FRONTEND_PORT}/start`);
 }

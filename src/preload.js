@@ -1,5 +1,17 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// ── Inject stored auth tokens before React boots ───────────────────────────
+// did-finish-load fires AFTER React's useEffect, so any injection done there
+// is too late — getSession() already ran against an empty localStorage.
+// Preload runs synchronously before the page JS, so this is the right place.
+try {
+  const stored = ipcRenderer.sendSync('get-auth-tokens-sync');
+  if (stored?.accessToken && !localStorage.getItem('access_token')) {
+    localStorage.setItem('access_token', stored.accessToken);
+    if (stored.refreshToken) localStorage.setItem('refresh_token', stored.refreshToken);
+  }
+} catch (_) { /* non-fatal — user will see sign-in screen */ }
+
 contextBridge.exposeInMainWorld('babyai', {
   openLog:          ()         => ipcRenderer.send('open-log'),
   openExternal:     (url)      => ipcRenderer.send('open-external', url),
