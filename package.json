@@ -1,6 +1,6 @@
 {
   "name": "babyai-desktop",
-  "version": "1.2.104",
+  "version": "1.2.105",
   "description": "babyAI Desktop — AI-powered ERP Intelligence",
   "main": "src/main.js",
   "scripts": {
@@ -13,7 +13,7 @@
   "build": {
     "appId": "com.sdc.babyai",
     "productName": "babyAI",
-    "compression": "maximum",
+    "compression": "normal",
     "copyright": "Copyright © 2025 SDC",
     "directories": {
       "output": "dist",
@@ -106,6 +106,6 @@
   },
   "devDependencies": {
     "electron": "^29.0.0",
-    "electron-builder": "^24.13.0"
+    "electron-builder": "24.9.1"
   }
 }
