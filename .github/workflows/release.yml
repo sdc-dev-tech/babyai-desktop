@@ -267,6 +267,14 @@ jobs:
           Write-Host ".env written"
 
       # ── 10. Install Electron deps & build installer ───────────────────────
+      - name: Exclude workspace from Windows Defender
+        shell: pwsh
+        run: |
+          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE"
+          Add-MpPreference -ExclusionPath "$env:TEMP"
+          Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\electron-builder"
+          Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\electron"
+
       - name: Install Electron dependencies
         run: npm install
 
