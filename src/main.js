@@ -104,6 +104,24 @@ function createWindow() {
   // A small floating back button, pinned over the main window, fixes that.
   setupBackOverlay(mainWindow);
 
+  // Rewrite hardcoded port 8000/3000 in the pre-built frontend bundle to the
+  // actual dynamically-assigned ports for this session. NEXT_PUBLIC_* vars are
+  // baked in at build time, so on multi-user machines (RDS) the second user's
+  // frontend would otherwise hit the first user's backend on the default port.
+  const { session } = require('electron');
+  session.defaultSession.webRequest.onBeforeRequest(
+    { urls: ['http://localhost:8000/*', 'http://127.0.0.1:8000/*',
+             'http://localhost:3000/*', 'http://127.0.0.1:3000/*'] },
+    (details, callback) => {
+      let url = details.url;
+      url = url.replace(/127\.0\.0\.1:8000/, `127.0.0.1:${BACKEND_PORT}`)
+               .replace(/localhost:8000/,    `127.0.0.1:${BACKEND_PORT}`)
+               .replace(/127\.0\.0\.1:3000/, `127.0.0.1:${FRONTEND_PORT}`)
+               .replace(/localhost:3000/,    `127.0.0.1:${FRONTEND_PORT}`);
+      callback(url !== details.url ? { redirectURL: url } : {});
+    }
+  );
+
   // Show loading screen first
   mainWindow.loadFile(path.join(__dirname, 'loading.html'));
   mainWindow.once('ready-to-show', () => mainWindow.show());
@@ -294,7 +312,13 @@ ipcMain.handle('chat-key-load', () => {
 });
 
 // ── Init Postgres data directory ───────────────────────────────────────────
-const PG_SVC_NAME = 'babyAI-postgres';
+// Per-user service name so multiple Windows accounts on the same machine
+// (RDS / fast-user-switching) each get an isolated service and don't step
+// on each other's running postgres instance.
+const { userInfo } = require('os');
+const _winUser     = (process.platform === 'win32' ? userInfo().username : 'local')
+                       .replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 20);
+const PG_SVC_NAME  = `babyAI-postgres-${_winUser}`;
 
 function runCmd(cmd, args) {
   return new Promise((resolve) => {
