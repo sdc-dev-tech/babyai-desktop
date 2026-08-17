@@ -210,10 +210,11 @@ const COMM_SETTINGS_KEYS = [
   'email_user',
   'email_password',        // sensitive — stored encrypted
   'email_from',
+  'groq_api_key',          // sensitive — stored encrypted
 ];
 
 function readCommSettings() {
-  const ENCRYPTED_KEYS = new Set(['wa_access_token', 'email_password']);
+  const ENCRYPTED_KEYS = new Set(['wa_access_token', 'email_password', 'groq_api_key']);
   const s = {};
   for (const key of COMM_SETTINGS_KEYS) {
     if (ENCRYPTED_KEYS.has(key)) {
@@ -238,7 +239,7 @@ function readCommSettings() {
 // the app (Settings page, React state, or dev tools) — only overwrite it.
 ipcMain.handle('get-comm-settings', () => {
   const s = readCommSettings();
-  return { ...s, wa_access_token: '', wa_access_token_set: !!s.wa_access_token, wa_phone_number_id: '', wa_phone_number_id_set: !!s.wa_phone_number_id, email_password: '', email_password_set: !!s.email_password };
+  return { ...s, wa_access_token: '', wa_access_token_set: !!s.wa_access_token, wa_phone_number_id: '', wa_phone_number_id_set: !!s.wa_phone_number_id, email_password: '', email_password_set: !!s.email_password, groq_api_key: '', groq_api_key_set: !!s.groq_api_key };
 });
 
 // The backend only reads WHATSAPP_*/SUPPORT_PHONE from its process env once,
@@ -786,6 +787,7 @@ async function startBackend() {
           WHATSAPP_ADMIN_NUMBER:   c.wa_admin_number,
           WHATSAPP_VERIFY_TOKEN:   c.wa_verify_token,
           SUPPORT_PHONE:           c.support_phone,
+          ...(c.groq_api_key ? { GROQ_API_KEY: c.groq_api_key } : {}),
           // Email sender — when set, backend uses direct SMTP instead of relay
           ...(c.email_host && c.email_from ? {
             EMAIL_HOST:     c.email_host,
