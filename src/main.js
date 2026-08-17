@@ -122,6 +122,26 @@ function createWindow() {
     }
   );
 
+  // When BACKEND_PORT ≠ 8000 the redirect above is cross-origin (port change),
+  // and Chromium's security rules strip the Authorization header before the
+  // redirected request is sent. Restore it from the electron-store token so
+  // authenticated endpoints still receive a Bearer token.
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['http://127.0.0.1:*/*', 'http://localhost:*/*'] },
+    (details, callback) => {
+      const isBackend = details.url.includes(`127.0.0.1:${BACKEND_PORT}`) ||
+                        details.url.includes(`localhost:${BACKEND_PORT}`);
+      const alreadyHasAuth = Object.keys(details.requestHeaders)
+        .some(k => k.toLowerCase() === 'authorization');
+
+      if (isBackend && !alreadyHasAuth) {
+        const token = store.get('auth_access_token', null);
+        if (token) details.requestHeaders['Authorization'] = `Bearer ${token}`;
+      }
+      callback({ requestHeaders: details.requestHeaders });
+    }
+  );
+
   // Show loading screen first
   mainWindow.loadFile(path.join(__dirname, 'loading.html'));
   mainWindow.once('ready-to-show', () => mainWindow.show());
