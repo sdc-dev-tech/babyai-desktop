@@ -198,19 +198,25 @@ ipcMain.on('nav-go-back', () => {
   if (mainWindow && mainWindow.webContents.canGoBack()) mainWindow.webContents.goBack();
 });
 
-// ── Communications (WhatsApp) settings ────────────────────────────────────
+// ── Communications (WhatsApp + Email) settings ────────────────────────────
 const COMM_SETTINGS_KEYS = [
   'wa_access_token',       // sensitive — stored encrypted
   'wa_phone_number_id',
   'wa_admin_number',
   'wa_verify_token',
   'support_phone',
+  'email_host',
+  'email_port',
+  'email_user',
+  'email_password',        // sensitive — stored encrypted
+  'email_from',
 ];
 
 function readCommSettings() {
+  const ENCRYPTED_KEYS = new Set(['wa_access_token', 'email_password']);
   const s = {};
   for (const key of COMM_SETTINGS_KEYS) {
-    if (key === 'wa_access_token') {
+    if (ENCRYPTED_KEYS.has(key)) {
       try {
         const b64 = store.get(key);
         s[key] = b64 && safeStorage.isEncryptionAvailable()
@@ -232,7 +238,7 @@ function readCommSettings() {
 // the app (Settings page, React state, or dev tools) — only overwrite it.
 ipcMain.handle('get-comm-settings', () => {
   const s = readCommSettings();
-  return { ...s, wa_access_token: '', wa_access_token_set: !!s.wa_access_token, wa_phone_number_id: '', wa_phone_number_id_set: !!s.wa_phone_number_id };
+  return { ...s, wa_access_token: '', wa_access_token_set: !!s.wa_access_token, wa_phone_number_id: '', wa_phone_number_id_set: !!s.wa_phone_number_id, email_password: '', email_password_set: !!s.email_password };
 });
 
 // The backend only reads WHATSAPP_*/SUPPORT_PHONE from its process env once,
@@ -256,13 +262,12 @@ function restartBackend() {
 }
 
 ipcMain.handle('set-comm-settings', async (_, settings) => {
+  const ENCRYPTED_KEYS  = new Set(['wa_access_token', 'email_password']);
+  const KEEP_IF_BLANK   = new Set(['wa_access_token', 'wa_phone_number_id', 'email_password']);
   for (const key of COMM_SETTINGS_KEYS) {
     const val = settings[key] ?? '';
-    if (key === 'wa_access_token') {
-      // The field is never pre-filled with the real token (see get-comm-settings
-      // above), so a blank value here means "leave the saved token unchanged",
-      // not "clear it" — only overwrite when the user actually typed a new one.
-      if (!val) continue;
+    if (KEEP_IF_BLANK.has(key) && !val) continue;
+    if (ENCRYPTED_KEYS.has(key)) {
       try {
         if (safeStorage.isEncryptionAvailable()) {
           store.set(key, safeStorage.encryptString(val).toString('base64'));
@@ -270,10 +275,6 @@ ipcMain.handle('set-comm-settings', async (_, settings) => {
           store.set(key, val);
         }
       } catch (e) { log(`set-comm-settings error for ${key}: ${e.message}`); }
-    } else if (key === 'wa_phone_number_id') {
-      // Same redaction pattern as wa_access_token — blank means keep existing
-      if (!val) continue;
-      store.set(key, val);
     } else {
       store.set(key, val);
     }
@@ -785,6 +786,14 @@ async function startBackend() {
           WHATSAPP_ADMIN_NUMBER:   c.wa_admin_number,
           WHATSAPP_VERIFY_TOKEN:   c.wa_verify_token,
           SUPPORT_PHONE:           c.support_phone,
+          // Email sender — when set, backend uses direct SMTP instead of relay
+          ...(c.email_host && c.email_from ? {
+            EMAIL_HOST:     c.email_host,
+            EMAIL_PORT:     c.email_port || '587',
+            EMAIL_USER:     c.email_user || c.email_from,
+            EMAIL_PASSWORD: c.email_password,
+            EMAIL_FROM:     c.email_from,
+          } : {}),
         };
       })()),
     };
