@@ -313,6 +313,30 @@ ipcMain.handle('chat-key-load', () => {
   }
 });
 
+// ── Auth token persistence (survives frontend port changes) ───────────────
+// localStorage is tied to origin (scheme+host+port). If the frontend gets a
+// different port on restart the old tokens are invisible → 401. We mirror
+// them in electron-store so we can re-inject on every page load.
+ipcMain.handle('save-auth-tokens', (_, { accessToken, refreshToken, user } = {}) => {
+  if (accessToken)  store.set('auth_access_token',  accessToken);
+  if (refreshToken) store.set('auth_refresh_token', refreshToken);
+  if (user)         store.set('auth_user',          JSON.stringify(user));
+  return true;
+});
+
+ipcMain.handle('load-auth-tokens', () => ({
+  accessToken:  store.get('auth_access_token',  null),
+  refreshToken: store.get('auth_refresh_token', null),
+  user:         (() => { try { return JSON.parse(store.get('auth_user', 'null')); } catch { return null; } })(),
+}));
+
+ipcMain.handle('clear-auth-tokens', () => {
+  store.delete('auth_access_token');
+  store.delete('auth_refresh_token');
+  store.delete('auth_user');
+  return true;
+});
+
 // ── Init Postgres data directory ───────────────────────────────────────────
 // Per-user service name so multiple Windows accounts on the same machine
 // (RDS / fast-user-switching) each get an isolated service and don't step
@@ -896,6 +920,22 @@ async function waitAndLoad() {
   // app has already downloaded it, so start on a branded splash screen with
   // Create Account / Sign In (it redirects to the dashboard itself if a
   // session already exists).
+  // Re-inject persisted auth tokens into localStorage before React boots.
+  // This ensures the session survives frontend port changes across restarts.
+  const stored = {
+    accessToken:  store.get('auth_access_token',  null),
+    refreshToken: store.get('auth_refresh_token', null),
+  };
+  if (stored.accessToken) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      mainWindow.webContents.executeJavaScript(`
+        if (!localStorage.getItem('access_token') && ${JSON.stringify(stored.accessToken)}) {
+          localStorage.setItem('access_token',  ${JSON.stringify(stored.accessToken)});
+          localStorage.setItem('refresh_token', ${JSON.stringify(stored.refreshToken || '')});
+        }
+      `).catch(() => {});
+    });
+  }
   log(`Loading app at http://localhost:${FRONTEND_PORT}/start`);
   mainWindow.loadURL(`http://localhost:${FRONTEND_PORT}/start`);
 }

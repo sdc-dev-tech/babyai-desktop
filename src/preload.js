@@ -9,4 +9,7 @@ contextBridge.exposeInMainWorld('babyai', {
   loadChatKey:      ()         => ipcRenderer.invoke('chat-key-load'),
   getCommSettings:  ()         => ipcRenderer.invoke('get-comm-settings'),
   setCommSettings:  (settings) => ipcRenderer.invoke('set-comm-settings', settings),
+  saveAuthTokens:   (tokens)   => ipcRenderer.invoke('save-auth-tokens', tokens),
+  loadAuthTokens:   ()         => ipcRenderer.invoke('load-auth-tokens'),
+  clearAuthTokens:  ()         => ipcRenderer.invoke('clear-auth-tokens'),
 });
