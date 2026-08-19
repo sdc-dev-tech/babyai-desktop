@@ -26,10 +26,49 @@ function findFreePort(start) {
   });
 }
 
+const PG_STATE_FILE = path.join(app.getPath('userData'), '.pg_port');
+
+function isPortListening(port) {
+  return new Promise((resolve) => {
+    const sock = net.createConnection({ host: '127.0.0.1', port });
+    sock.once('connect', () => { sock.destroy(); resolve(true); });
+    sock.once('error',   () => { sock.destroy(); resolve(false); });
+    setTimeout(() => { sock.destroy(); resolve(false); }, 500);
+  });
+}
+
+function isOurPostgresRunning() {
+  // pg_ctl status -D DATA_DIR exits 0 and prints "server is running" only if
+  // the Postgres process was started with that exact data directory — safe even
+  // on multi-user RDS where other users may have their own Postgres instances.
+  return new Promise((resolve) => {
+    const pgctl = path.join(PG_DIR, 'bin', process.platform === 'win32' ? 'pg_ctl.exe' : 'pg_ctl');
+    execFile(pgctl, ['status', '-D', DATA_DIR], (err, stdout) => {
+      resolve(!err && stdout.includes('server is running'));
+    });
+  });
+}
+
 async function assignPorts() {
+  // If our Postgres from a previous (crashed/abrupt) session is still running,
+  // reuse its port instead of starting a new instance on a different port.
+  try {
+    const saved = fs.readFileSync(PG_STATE_FILE, 'utf8').trim();
+    const savedPort = parseInt(saved, 10);
+    if (savedPort && await isPortListening(savedPort) && await isOurPostgresRunning()) {
+      log(`Reusing existing Postgres on port ${savedPort} from previous session`);
+      PG_PORT       = savedPort;
+      BACKEND_PORT  = await findFreePort(8000);
+      FRONTEND_PORT = await findFreePort(3000);
+      log(`Ports assigned — PG: ${PG_PORT} (reused), Backend: ${BACKEND_PORT}, Frontend: ${FRONTEND_PORT}`);
+      return;
+    }
+  } catch (_) {}
+
   PG_PORT       = await findFreePort(5432);
   BACKEND_PORT  = await findFreePort(8000);
   FRONTEND_PORT = await findFreePort(3000);
+  fs.writeFileSync(PG_STATE_FILE, String(PG_PORT));
   log(`Ports assigned — PG: ${PG_PORT}, Backend: ${BACKEND_PORT}, Frontend: ${FRONTEND_PORT}`);
 }
 
@@ -110,14 +149,12 @@ function createWindow() {
   // frontend would otherwise hit the first user's backend on the default port.
   const { session } = require('electron');
   session.defaultSession.webRequest.onBeforeRequest(
-    { urls: ['http://localhost:8000/*', 'http://127.0.0.1:8000/*',
-             'http://localhost:3000/*', 'http://127.0.0.1:3000/*'] },
+    { urls: ['http://localhost:*/*', 'http://127.0.0.1:*/*'] },
     (details, callback) => {
       let url = details.url;
-      url = url.replace(/127\.0\.0\.1:8000/, `127.0.0.1:${BACKEND_PORT}`)
-               .replace(/localhost:8000/,    `127.0.0.1:${BACKEND_PORT}`)
-               .replace(/127\.0\.0\.1:3000/, `127.0.0.1:${FRONTEND_PORT}`)
-               .replace(/localhost:3000/,    `127.0.0.1:${FRONTEND_PORT}`);
+      // Rewrite any backend port variant (8000 default, 8001 dev) to the actual assigned port
+      url = url.replace(/(?:127\.0\.0\.1|localhost):800[0-9]/, `127.0.0.1:${BACKEND_PORT}`)
+               .replace(/(?:127\.0\.0\.1|localhost):3000/,     `127.0.0.1:${FRONTEND_PORT}`);
       callback(url !== details.url ? { redirectURL: url } : {});
     }
   );
