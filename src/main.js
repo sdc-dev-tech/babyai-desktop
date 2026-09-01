@@ -841,8 +841,12 @@ async function startBackend() {
 
     const env = {
       ...process.env,
-      DATABASE_URL:              `postgresql://postgres@localhost:${PG_PORT}/postgres`,
-      POSTGRES_HOST:             'localhost',
+      // 127.0.0.1, not 'localhost' — on Windows, resolving the literal
+      // string "localhost" tries IPv6 (::1) first and times out before
+      // falling back to IPv4, adding real latency to every new Postgres
+      // connection. Explicit IPv4 skips that resolution step entirely.
+      DATABASE_URL:              `postgresql://postgres@127.0.0.1:${PG_PORT}/postgres`,
+      POSTGRES_HOST:             '127.0.0.1',
       POSTGRES_PORT:             String(PG_PORT),
       POSTGRES_DB:               'postgres',
       POSTGRES_USER:             'postgres',
