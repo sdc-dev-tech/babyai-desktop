@@ -24,4 +24,6 @@ contextBridge.exposeInMainWorld('babyai', {
   saveAuthTokens:   (tokens)   => ipcRenderer.invoke('save-auth-tokens', tokens),
   loadAuthTokens:   ()         => ipcRenderer.invoke('load-auth-tokens'),
   clearAuthTokens:  ()         => ipcRenderer.invoke('clear-auth-tokens'),
+  getTourCompleted: ()         => ipcRenderer.invoke('get-tour-completed'),
+  setTourCompleted: (completed) => ipcRenderer.invoke('set-tour-completed', completed),
 });

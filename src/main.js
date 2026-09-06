@@ -403,6 +403,13 @@ ipcMain.handle('clear-auth-tokens', () => {
   return true;
 });
 
+ipcMain.handle('get-tour-completed', () => store.get('tour_completed', false));
+
+ipcMain.handle('set-tour-completed', (_, completed) => {
+  store.set('tour_completed', !!completed);
+  return true;
+});
+
 // ── Init Postgres data directory ───────────────────────────────────────────
 // Per-user service name so multiple Windows accounts on the same machine
 // (RDS / fast-user-switching) each get an isolated service and don't step
