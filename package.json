@@ -1,6 +1,6 @@
 {
   "name": "babyai-desktop",
-  "version": "1.2.121",
+  "version": "1.2.122",
   "description": "babyAI Desktop — AI-powered ERP Intelligence",
   "main": "src/main.js",
   "scripts": {
