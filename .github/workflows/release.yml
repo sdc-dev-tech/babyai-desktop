@@ -232,8 +232,10 @@ jobs:
             --hidden-import sklearn.tree._utils `
             --hidden-import sklearn.utils._weight_vector `
             --collect-all sklearn `
-            --collect-all scikit_learn `
-            --collect-all scipy `
+            --copy-metadata scikit-learn `
+            --collect-all scipy.stats `
+            --collect-all scipy.special `
+            --collect-all scipy._lib `
             --collect-all joblib `
             --collect-all threadpoolctl `
             --collect-all fastapi `
