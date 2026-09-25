@@ -3,6 +3,7 @@ const path   = require('path');
 const { spawn, execFile } = require('child_process');
 const fs     = require('fs');
 const net    = require('net');
+const crypto = require('crypto');
 const Store  = require('electron-store');
 
 const store = new Store();
@@ -100,10 +101,51 @@ let appQuitting     = false;
 let backOverlayWin  = null;
 
 // ── Logging ────────────────────────────────────────────────────────────────
+// babyai.log lives in plain sight on the client's machine (userData folder)
+// and can carry internal diagnostics (stack traces, file paths, setup
+// details) that shouldn't be casually readable by anyone who opens it.
+//
+// Deliberately PUBLIC-key (not password/shared-secret) encryption: this
+// constant below is safe to ship inside the app because a public key can
+// only ENCRYPT, never decrypt — unlike an earlier version of this that used
+// a shared password baked into a bundled .env file, which anyone with
+// access to the installed app's files could read and use to decrypt their
+// own log. The matching PRIVATE key lives only on the developer's own
+// machine (~/.babyai-secrets/log-private-key.pem, never committed, never
+// shipped) — see scripts/decrypt-log.js.
+//
+// Hybrid RSA+AES per line (RSA alone can't encrypt arbitrary-length data):
+// a fresh random AES-256 key encrypts the line, then the AES key itself is
+// RSA-encrypted with the public key below. Each line is fully independent
+// (own AES key + IV) so appending never disturbs earlier entries and a
+// truncated last line from a crash can't corrupt the whole file.
+const LOG_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnmMM9nasdGvhgnGk9W0A
+dNgDtfKIt39HINydJL5SqWYu2xmeoKmnVdhWIrRi+l0Zsm3/0oFN3j8X62Xj1Hdv
+SRpGxg/qngdGxgV7YD6VEhn4A88qCYhctckIHmczE3XnfSEetswuHAuO9HE3Npof
+XCCdBfLi9e7kZzrEQgxFsYeTxthTFultwQB4MfR9qT5iHnOC3j4Vqna0CWT+OiF8
+z4B9aSF1jrdWFa1EaPMDE6NC4WzyUvKKqSAWs38D6Ob9CYsVrGw9VQDhfbh0roKw
+HcsrhQqT5H4mv4R1esw+wq+NXlWTaYiL+cq8CetCuV0lGaUptORLNH6o10c1aNS0
+/wIDAQAB
+-----END PUBLIC KEY-----`;
+
 const logFile = path.join(app.getPath('userData'), 'babyai.log');
+
 function log(msg) {
-  const line = `[${new Date().toISOString()}] ${msg}\n`;
-  fs.appendFileSync(logFile, line);
+  const line   = `[${new Date().toISOString()}] ${msg}`;
+  const aesKey = crypto.randomBytes(32);
+  const iv     = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', aesKey, iv);
+  const ct     = Buffer.concat([cipher.update(line, 'utf8'), cipher.final()]);
+  const tag    = cipher.getAuthTag();
+  const encAesKey = crypto.publicEncrypt(
+    { key: LOG_PUBLIC_KEY, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING },
+    aesKey,
+  );
+  fs.appendFileSync(
+    logFile,
+    `${encAesKey.toString('base64')}:${iv.toString('base64')}:${tag.toString('base64')}:${ct.toString('base64')}\n`,
+  );
   console.log(msg);
 }
 
@@ -874,11 +916,13 @@ async function startBackend() {
       // never the master secret. See api/chat_privacy.py, api/encryption.py.
       SUPABASE_URL:              SUPABASE_URL,
       SUPABASE_ANON_KEY:         SUPABASE_ANON_KEY,
-      // Lets communications_service.py send customer emails (payment
-      // reminders, invoice PDFs) through the same send-email relay
-      // app/lib/mailer.ts already uses for account emails — see that
-      // function's header comment. No local SMTP password needed here.
-      MAIL_RELAY_SECRET:         MAIL_RELAY_SECRET,
+      // communications_service.py sends customer emails (payment reminders,
+      // invoice PDFs) through the same send-email relay app/lib/mailer.ts
+      // uses for account emails, but authenticated with the logged-in
+      // user's own Supabase JWT (forwarded per-request via
+      // api/request_context.py) rather than a shared secret — no
+      // MAIL_RELAY_SECRET needed in this process. See that function's
+      // header comment.
       MDB_TOOLS_DIR:             path.join(RESOURCES, 'mdbtools'),
       ...((() => {
         const c = readCommSettings();
