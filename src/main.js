@@ -214,7 +214,7 @@ function createWindow() {
         .some(k => k.toLowerCase() === 'authorization');
 
       if (isBackend && !alreadyHasAuth) {
-        const token = store.get('auth_access_token', null);
+        const token = _decryptToken(store.get('auth_access_token', null));
         if (token) details.requestHeaders['Authorization'] = `Bearer ${token}`;
       }
       callback({ requestHeaders: details.requestHeaders });
@@ -297,13 +297,12 @@ ipcMain.on('nav-go-back', () => {
   if (mainWindow && mainWindow.webContents.canGoBack()) mainWindow.webContents.goBack();
 });
 
-// ── Communications (WhatsApp + Email) settings ────────────────────────────
+// ── Communications (Email) settings ────────────────────────────────────────
+// WhatsApp credentials moved to admin-managed (see babyAI-backend's
+// /admin/clients/{id}/whatsapp endpoints) — an admin sets access token,
+// phone number ID, admin number, and support phone up on the client's
+// behalf now, so none of that is read from local settings anymore.
 const COMM_SETTINGS_KEYS = [
-  'wa_access_token',       // sensitive — stored encrypted
-  'wa_phone_number_id',
-  'wa_admin_number',
-  'wa_verify_token',
-  'support_phone',
   'email_host',
   'email_port',
   'email_user',
@@ -312,7 +311,7 @@ const COMM_SETTINGS_KEYS = [
 ];
 
 function readCommSettings() {
-  const ENCRYPTED_KEYS = new Set(['wa_access_token', 'email_password']);
+  const ENCRYPTED_KEYS = new Set(['email_password']);
   const s = {};
   for (const key of COMM_SETTINGS_KEYS) {
     if (ENCRYPTED_KEYS.has(key)) {
@@ -337,12 +336,12 @@ function readCommSettings() {
 // the app (Settings page, React state, or dev tools) — only overwrite it.
 ipcMain.handle('get-comm-settings', () => {
   const s = readCommSettings();
-  return { ...s, wa_access_token: '', wa_access_token_set: !!s.wa_access_token, wa_phone_number_id: '', wa_phone_number_id_set: !!s.wa_phone_number_id, email_password: '', email_password_set: !!s.email_password };
+  return { ...s, email_password: '', email_password_set: !!s.email_password };
 });
 
-// The backend only reads WHATSAPP_*/SUPPORT_PHONE from its process env once,
-// at spawn time (see startBackend()) — an OS process's env can't be changed
-// after it's running. So saving new comm settings has to restart just the
+// The backend only reads EMAIL_* from its process env once, at spawn time
+// (see startBackend()) — an OS process's env can't be changed after it's
+// running. So saving new comm settings has to restart just the
 // backend child process for them to take effect; previously this required
 // restarting the whole app (which also respawns Postgres/frontend for no
 // reason). Waits for the old process to actually exit before respawning so
@@ -361,8 +360,8 @@ function restartBackend() {
 }
 
 ipcMain.handle('set-comm-settings', async (_, settings) => {
-  const ENCRYPTED_KEYS  = new Set(['wa_access_token', 'email_password']);
-  const KEEP_IF_BLANK   = new Set(['wa_access_token', 'wa_phone_number_id', 'email_password']);
+  const ENCRYPTED_KEYS  = new Set(['email_password']);
+  const KEEP_IF_BLANK   = new Set(['email_password']);
   for (const key of COMM_SETTINGS_KEYS) {
     const val = settings[key] ?? '';
     if (KEEP_IF_BLANK.has(key) && !val) continue;
@@ -415,16 +414,36 @@ ipcMain.handle('chat-key-load', () => {
 // localStorage is tied to origin (scheme+host+port). If the frontend gets a
 // different port on restart the old tokens are invisible → 401. We mirror
 // them in electron-store so we can re-inject on every page load.
+//
+// Encrypted the same way email_password is (safeStorage,
+// OS-keychain-backed) — a raw session/refresh token is a live login, worth
+// the same protection as those. _decryptToken() falls back to returning the
+// raw value on a decode failure so an existing install's already-stored
+// PLAINTEXT token (from before this) keeps working until it's next
+// overwritten by save-auth-tokens, rather than forcing every open session
+// to re-login on update.
+function _encryptToken(val) {
+  if (!val) return val;
+  return safeStorage.isEncryptionAvailable()
+    ? safeStorage.encryptString(val).toString('base64')
+    : val;
+}
+function _decryptToken(raw) {
+  if (!raw || !safeStorage.isEncryptionAvailable()) return raw;
+  try { return safeStorage.decryptString(Buffer.from(raw, 'base64')); }
+  catch { return raw; }
+}
+
 ipcMain.handle('save-auth-tokens', (_, { accessToken, refreshToken, user } = {}) => {
-  if (accessToken)  store.set('auth_access_token',  accessToken);
-  if (refreshToken) store.set('auth_refresh_token', refreshToken);
+  if (accessToken)  store.set('auth_access_token',  _encryptToken(accessToken));
+  if (refreshToken) store.set('auth_refresh_token', _encryptToken(refreshToken));
   if (user)         store.set('auth_user',          JSON.stringify(user));
   return true;
 });
 
 ipcMain.handle('load-auth-tokens', () => ({
-  accessToken:  store.get('auth_access_token',  null),
-  refreshToken: store.get('auth_refresh_token', null),
+  accessToken:  _decryptToken(store.get('auth_access_token',  null)),
+  refreshToken: _decryptToken(store.get('auth_refresh_token', null)),
   user:         (() => { try { return JSON.parse(store.get('auth_user', 'null')); } catch { return null; } })(),
 }));
 
@@ -432,8 +451,8 @@ ipcMain.handle('load-auth-tokens', () => ({
 // ipcRenderer.sendSync() requires ipcMain.on (not ipcMain.handle).
 ipcMain.on('get-auth-tokens-sync', (event) => {
   event.returnValue = {
-    accessToken:  store.get('auth_access_token',  null),
-    refreshToken: store.get('auth_refresh_token', null),
+    accessToken:  _decryptToken(store.get('auth_access_token',  null)),
+    refreshToken: _decryptToken(store.get('auth_refresh_token', null)),
   };
 });
 
@@ -923,14 +942,13 @@ async function startBackend() {
       // MAIL_RELAY_SECRET needed in this process. See that function's
       // header comment.
       MDB_TOOLS_DIR:             path.join(RESOURCES, 'mdbtools'),
+      // WhatsApp credentials are no longer sourced from local settings —
+      // the backend fetches them per-request from Supabase, admin-assigned
+      // (see babyAI-backend's api/whatsapp_config.py and
+      // /admin/clients/{id}/whatsapp endpoints).
       ...((() => {
         const c = readCommSettings();
         return {
-          WHATSAPP_ACCESS_TOKEN:   c.wa_access_token,
-          WHATSAPP_PHONE_NUMBER_ID:c.wa_phone_number_id,
-          WHATSAPP_ADMIN_NUMBER:   c.wa_admin_number,
-          WHATSAPP_VERIFY_TOKEN:   c.wa_verify_token,
-          SUPPORT_PHONE:           c.support_phone,
           // Email sender — when set, backend uses direct SMTP instead of relay
           ...(c.email_host && c.email_from ? {
             EMAIL_HOST:     c.email_host,
