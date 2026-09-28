@@ -199,8 +199,8 @@ jobs:
       - name: Freeze Python backend
         shell: pwsh
         run: |
-          pip install -r babyAI-backend/requirements.txt
-          pip install pyinstaller
+          pip install --retries 10 --timeout 60 -r babyAI-backend/requirements.txt
+          pip install --retries 10 --timeout 60 pyinstaller
 
           # Copy backend source entirely to C: so all paths stay on one drive
           Copy-Item "$PWD\babyAI-backend" "C:\babyai-src" -Recurse -Force
