@@ -474,7 +474,7 @@ ipcMain.handle('set-tour-completed', (_, completed) => {
 // Per-user service name so multiple Windows accounts on the same machine
 // (RDS / fast-user-switching) each get an isolated service and don't step
 // on each other's running postgres instance.
-const { userInfo } = require('os');
+const { userInfo, totalmem } = require('os');
 const _winUser     = (process.platform === 'win32' ? userInfo().username : 'local')
                        .replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 20);
 const PG_SVC_NAME  = `babyAI-postgres-${_winUser}`;
@@ -538,12 +538,83 @@ async function runInitdb() {
       if (code === 0) {
         log('Postgres data directory initialised');
         setPgConfPort();
+        tunePgConf();
         resolve();
       } else {
         reject(Object.assign(new Error(`initdb exited with code ${code}`), { exitCode: code }));
       }
     });
   });
+}
+
+function tunePgConf() {
+  // initdb ships extremely conservative defaults (shared_buffers=128MB,
+  // work_mem=4MB) regardless of the machine's real RAM — fine for a toy
+  // install, but this backend runs real analytical queries (multi-CTE
+  // joins, sorts, window functions over tens of thousands of rows) against
+  // this same local Postgres. Confirmed live: a 4MB work_mem forced one
+  // such query's heaviest join into a disk-friendly merge-join+sort
+  // instead of a much faster in-memory hash join — and this isn't one
+  // slow page, every page's queries pay the same tax.
+  //
+  // work_mem is per sort/hash operation PER CONNECTION, not a global cap,
+  // so it can't just scale with RAM alone — the pool allows up to 20
+  // concurrent connections (api/db.py), and switching companies mid-load
+  // can roughly double how many queries are in flight at once. Sizing it
+  // off total RAM without bounding for that would risk the opposite
+  // failure: enough concurrent memory-hungry queries to push the OS into
+  // swapping, which is worse than any single query spilling to disk.
+  //
+  // So this bounds the worst case explicitly: assume up to REALISTIC_CONCURRENCY
+  // connections busy at once (below the hard pool max of 20, covering the
+  // "switched company mid-load" burst without assuming every connection
+  // is saturated simultaneously) each running a query with up to
+  // OPS_PER_QUERY memory-consuming sort/hash nodes (credit-risk's CTEs are
+  // the worst case we've seen), and caps total work_mem usage to WORK_MEM_BUDGET_FRACTION
+  // of RAM — leaving the rest for shared_buffers, the OS, and the rest of
+  // this all-in-one desktop app (Electron + Next.js + the Python backend
+  // itself all run on the same machine).
+  const conf = path.join(DATA_DIR, 'postgresql.conf');
+  if (!fs.existsSync(conf)) return;
+
+  const totalMb = Math.floor(totalmem() / (1024 * 1024));
+  const REALISTIC_CONCURRENCY    = 12;   // see comment above — below the pool's hard max of 20
+  const OPS_PER_QUERY            = 4;    // assumed concurrent sort/hash nodes per query, worst case
+  const WORK_MEM_BUDGET_FRACTION = 0.25; // of total RAM, for the worst-case total across all connections
+
+  const workMemMb = Math.min(64, Math.max(8, Math.floor(
+    (totalMb * WORK_MEM_BUDGET_FRACTION) / (REALISTIC_CONCURRENCY * OPS_PER_QUERY)
+  )));
+  // shared_buffers is a one-time fixed allocation at Postgres startup, not
+  // per-query/per-connection — safe to size independently of the work_mem
+  // concurrency math above.
+  const sharedBuffersMb = Math.min(1024, Math.max(128, Math.floor(totalMb * 0.15)));
+  // effective_cache_size is a planner HINT (how much OS disk cache to
+  // assume is available for cost estimation), not a real allocation — safe
+  // to size generously.
+  const effectiveCacheMb = Math.min(4096, Math.max(512, Math.floor(totalMb * 0.5)));
+  // maintenance_work_mem is used for one-off operations (CREATE INDEX,
+  // VACUUM, the materialized-view rebuilds a sync triggers) — these don't
+  // run with the same per-request concurrency as normal queries, so this
+  // can be more generous than work_mem.
+  const maintenanceWorkMemMb = Math.min(256, Math.max(64, Math.floor(totalMb * 0.05)));
+
+  const settings = {
+    shared_buffers:       `${sharedBuffersMb}MB`,
+    effective_cache_size: `${effectiveCacheMb}MB`,
+    work_mem:             `${workMemMb}MB`,
+    maintenance_work_mem: `${maintenanceWorkMemMb}MB`,
+  };
+
+  let text = fs.readFileSync(conf, 'utf8');
+  for (const [key, value] of Object.entries(settings)) {
+    const re = new RegExp(`^\\s*${key}\\s*=.*$`, 'm');
+    text = re.test(text) ? text.replace(re, `${key} = ${value}`) : text + `\n${key} = ${value}\n`;
+  }
+  fs.writeFileSync(conf, text);
+  log(`Tuned postgresql.conf for ${totalMb}MB host RAM: shared_buffers=${sharedBuffersMb}MB, `
+    + `effective_cache_size=${effectiveCacheMb}MB, work_mem=${workMemMb}MB, `
+    + `maintenance_work_mem=${maintenanceWorkMemMb}MB`);
 }
 
 function setPgConfPort() {
@@ -604,6 +675,7 @@ async function initPostgres() {
     }
 
     setPgConfPort();
+    tunePgConf();
     return;
   }
   if (fs.existsSync(DATA_DIR)) {
