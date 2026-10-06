@@ -248,6 +248,7 @@ jobs:
             --hidden-import certifi `
             --hidden-import multipart `
             --collect-all multipart `
+            --collect-all reportlab `
             "run.py"
 
           # Copy output back to D: workspace
