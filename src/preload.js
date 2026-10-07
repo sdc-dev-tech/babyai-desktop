@@ -12,7 +12,14 @@ try {
   }
 } catch (_) { /* non-fatal — user will see sign-in screen */ }
 
+// Real backend URL for this session (port can differ from the 8000 baked into
+// the frontend bundle — see 'get-backend-url' in main.js). Read once per page
+// load, synchronously, so api.ts can use it when it initialises.
+let apiUrl = null;
+try { apiUrl = ipcRenderer.sendSync('get-backend-url'); } catch (_) {}
+
 contextBridge.exposeInMainWorld('babyai', {
+  apiUrl,
   openLog:          ()         => ipcRenderer.send('open-log'),
   openExternal:     (url)      => ipcRenderer.send('open-external', url),
   platform:         process.platform,

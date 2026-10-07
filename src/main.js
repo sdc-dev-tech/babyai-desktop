@@ -338,6 +338,17 @@ function readCommSettings() {
 // gets back is redacted to a blank string plus a flag saying whether one is
 // already saved, so there's no way to view a previously-saved token through
 // the app (Settings page, React state, or dev tools) — only overwrite it.
+// The frontend bundle has NEXT_PUBLIC_API_URL baked in at build time
+// (127.0.0.1:8000). When 8000 is taken the backend lands on another port
+// and the onBeforeRequest rewrite redirects every API call there — but a
+// cross-port redirect makes Chromium send "Origin: null", which the
+// backend's CORS rejects (every preflight 400s). Handing the frontend the
+// real URL up front (read synchronously by preload.js on each page load)
+// lets it call the right port directly, with no redirect at all.
+ipcMain.on('get-backend-url', (event) => {
+  event.returnValue = `http://127.0.0.1:${BACKEND_PORT}`;
+});
+
 ipcMain.handle('get-comm-settings', () => {
   const s = readCommSettings();
   return { ...s, email_password: '', email_password_set: !!s.email_password };
