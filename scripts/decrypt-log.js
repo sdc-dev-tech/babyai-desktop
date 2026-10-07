@@ -32,7 +32,10 @@ const privateKey = fs.readFileSync(keyPath, 'utf8');
 const lines = fs.readFileSync(logPath, 'utf8').split('\n').filter(Boolean);
 for (const line of lines) {
   const parts = line.split(':');
-  if (parts.length !== 4) {
+  // Plain-text lines (written while encryption is disabled) start with the
+  // "[ISO timestamp]" prefix — base64 never contains "[". Checked first since
+  // a plain message with one extra ":" would otherwise split into 4 parts.
+  if (line.startsWith('[') || parts.length !== 4) {
     // Not a line in the current encrypted format — print as-is.
     console.log(line);
     continue;

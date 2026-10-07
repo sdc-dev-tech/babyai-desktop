@@ -133,19 +133,23 @@ const logFile = path.join(app.getPath('userData'), 'babyai.log');
 
 function log(msg) {
   const line   = `[${new Date().toISOString()}] ${msg}`;
-  const aesKey = crypto.randomBytes(32);
-  const iv     = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', aesKey, iv);
-  const ct     = Buffer.concat([cipher.update(line, 'utf8'), cipher.final()]);
-  const tag    = cipher.getAuthTag();
-  const encAesKey = crypto.publicEncrypt(
-    { key: LOG_PUBLIC_KEY, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING },
-    aesKey,
-  );
-  fs.appendFileSync(
-    logFile,
-    `${encAesKey.toString('base64')}:${iv.toString('base64')}:${tag.toString('base64')}:${ct.toString('base64')}\n`,
-  );
+  // Encryption temporarily disabled — writing plain-text lines for now.
+  // Re-enable by restoring the block below (scripts/decrypt-log.js already
+  // passes plain lines through, so mixed files stay readable).
+  // const aesKey = crypto.randomBytes(32);
+  // const iv     = crypto.randomBytes(12);
+  // const cipher = crypto.createCipheriv('aes-256-gcm', aesKey, iv);
+  // const ct     = Buffer.concat([cipher.update(line, 'utf8'), cipher.final()]);
+  // const tag    = cipher.getAuthTag();
+  // const encAesKey = crypto.publicEncrypt(
+  //   { key: LOG_PUBLIC_KEY, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING },
+  //   aesKey,
+  // );
+  // fs.appendFileSync(
+  //   logFile,
+  //   `${encAesKey.toString('base64')}:${iv.toString('base64')}:${tag.toString('base64')}:${ct.toString('base64')}\n`,
+  // );
+  fs.appendFileSync(logFile, `${line}\n`);
   console.log(msg);
 }
 
