@@ -1007,6 +1007,12 @@ async function startBackend() {
       POSTGRES_PASSWORD:         '',
       PORT:                      String(BACKEND_PORT),
       HOST:                      '127.0.0.1',
+      // stdout is a pipe here, so Python block-buffers print() output: sync
+      // sub-steps showed up in delayed bursts and a predictions traceback was
+      // lost entirely when the app was closed mid-buffer. Unbuffered writes
+      // every line to babyai.log as it happens. (Model internals stay out of
+      // the log regardless — see predictions._model_debug / BABYAI_MODEL_DEBUG.)
+      PYTHONUNBUFFERED:          '1',
       ANTHROPIC_API_KEY:         store.get('anthropic_key', ''),
       // Public by design — same values as NEXT_PUBLIC_SUPABASE_URL/ANON_KEY
       // below, read from the local .env (see ../.env.example).
