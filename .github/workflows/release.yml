@@ -105,8 +105,14 @@ jobs:
         run: |
           $OUT = "vendor\AccessDatabaseEngine_X64.exe"
           New-Item -ItemType Directory -Force -Path "vendor" | Out-Null
-          # Try known URLs in order — Microsoft occasionally changes CDN paths
+          # Our own copy (the repo's "resources" release) first — every
+          # Microsoft URL below has been failing in CI, so installers were
+          # shipping a placeholder and each client had to download the driver
+          # at first launch; a server without access to github.com /
+          # download.microsoft.com then couldn't read any .bds file at all.
+          # Microsoft URLs stay as fallbacks only.
           $URLS = @(
+            "https://github.com/sdc-dev-tech/babyai-desktop/releases/download/resources/AccessDatabaseEngine_X64.exe",
             "https://download.microsoft.com/download/3/5/C/35C84C36-661A-44E3-BE3D-FDDE7CE6782C/accessdatabaseengine_X64.exe",
             "https://download.microsoft.com/download/2/4/3/24375141-E08D-4803-AB0E-10F2E3A07AAA/AccessDatabaseEngine_X64.exe",
             "https://download.microsoft.com/download/3/5/C/35C84C36-661A-44E3-BE3D-FDDE7CE6782B/AccessDatabaseEngine_X64.exe"
