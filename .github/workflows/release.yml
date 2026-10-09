@@ -255,7 +255,9 @@ jobs:
             --hidden-import multipart `
             --collect-all multipart `
             --collect-all reportlab `
+            --collect-all xgboost `
             "run.py"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
           # Copy output back to D: workspace
           New-Item -ItemType Directory -Force -Path "D:\a\babyai-desktop\babyai-desktop\vendor\backend" | Out-Null
