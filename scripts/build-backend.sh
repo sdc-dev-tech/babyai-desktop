@@ -31,6 +31,9 @@ pyinstaller \
   --hidden-import anthropic \
   --collect-all fastapi \
   --collect-all starlette \
+  --collect-all sklearn \
+  --collect-all joblib \
+  --collect-all scipy \
   api/main.py
 
 echo "✓ Backend frozen → vendor/backend/api"

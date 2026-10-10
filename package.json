@@ -1,7 +1,7 @@
 {
   "name": "babyai-desktop",
-  "version": "1.2.45",
-  "description": "babyAI Desktop — ERP Intelligence for BUSY & Tally",
+  "version": "1.2.176",
+  "description": "babyAI Desktop — AI-powered ERP Intelligence",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -13,7 +13,7 @@
   "build": {
     "appId": "com.sdc.babyai",
     "productName": "babyAI",
-    "compression": "maximum",
+    "compression": "normal",
     "copyright": "Copyright © 2025 SDC",
     "directories": {
       "output": "dist",
@@ -24,6 +24,10 @@
       "resources/**/*"
     ],
     "extraResources": [
+      {
+        "from": ".env",
+        "to": ".env"
+      },
       {
         "from": "vendor/backend",
         "to": "backend",
@@ -96,11 +100,12 @@
     }
   },
   "dependencies": {
+    "dotenv": "^16.4.5",
     "electron-store": "^8.1.0",
     "node-fetch": "^2.7.0"
   },
   "devDependencies": {
     "electron": "^29.0.0",
-    "electron-builder": "^24.13.0"
+    "electron-builder": "24.9.1"
   }
 }

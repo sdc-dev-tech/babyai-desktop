@@ -24,7 +24,7 @@ jobs:
           repository: sdc-dev-tech/babyAI
           token: ${{ secrets.GH_PAT }}
           path: babyAI
-          ref: electron-desktop
+          ref: communications-fe
 
       # ── 3. Checkout backend ───────────────────────────────────────────────
       - name: Checkout babyAI-backend
@@ -33,7 +33,7 @@ jobs:
           repository: sdc-dev-tech/babyAI-backend
           token: ${{ secrets.GH_PAT }}
           path: babyAI-backend
-          ref: llm-integration
+          ref: communications-be
 
       # ── 4. Set up Node for Electron + Next.js ─────────────────────────────
       - name: Set up Node 20
@@ -105,8 +105,14 @@ jobs:
         run: |
           $OUT = "vendor\AccessDatabaseEngine_X64.exe"
           New-Item -ItemType Directory -Force -Path "vendor" | Out-Null
-          # Try known URLs in order — Microsoft occasionally changes CDN paths
+          # Our own copy (the repo's "resources" release) first — every
+          # Microsoft URL below has been failing in CI, so installers were
+          # shipping a placeholder and each client had to download the driver
+          # at first launch; a server without access to github.com /
+          # download.microsoft.com then couldn't read any .bds file at all.
+          # Microsoft URLs stay as fallbacks only.
           $URLS = @(
+            "https://github.com/sdc-dev-tech/babyai-desktop/releases/download/resources/AccessDatabaseEngine_X64.exe",
             "https://download.microsoft.com/download/3/5/C/35C84C36-661A-44E3-BE3D-FDDE7CE6782C/accessdatabaseengine_X64.exe",
             "https://download.microsoft.com/download/2/4/3/24375141-E08D-4803-AB0E-10F2E3A07AAA/AccessDatabaseEngine_X64.exe",
             "https://download.microsoft.com/download/3/5/C/35C84C36-661A-44E3-BE3D-FDDE7CE6782B/AccessDatabaseEngine_X64.exe"
@@ -137,9 +143,26 @@ jobs:
         run: |
           $OUT = "vendor\vc_redist.x64.exe"
           New-Item -ItemType Directory -Force -Path "vendor" | Out-Null
-          Write-Host "Downloading vc_redist.x64.exe..."
-          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile $OUT -UseBasicParsing
-          Write-Host "Downloaded: $((Get-Item $OUT).Length) bytes"
+          $urls = @(
+            "https://aka.ms/vs/17/release/vc_redist.x64.exe",
+            "https://download.microsoft.com/download/9/3/F/93FCF1E7-E6A4-478B-96E7-D4B285925B00/vc_redist.x64.exe"
+          )
+          $ok = $false
+          foreach ($url in $urls) {
+            try {
+              Write-Host "Trying: $url"
+              Invoke-WebRequest -Uri $url -OutFile $OUT -UseBasicParsing -TimeoutSec 60
+              if ((Get-Item $OUT).Length -gt 100KB) { $ok = $true; break }
+            } catch {
+              Write-Host "Failed: $_"
+            }
+          }
+          if ($ok) {
+            Write-Host "Downloaded vc_redist.x64.exe: $((Get-Item $OUT).Length) bytes"
+          } else {
+            Write-Warning "Could not download vc_redist.x64.exe — writing placeholder (app installs it at runtime)"
+            [System.IO.File]::WriteAllText($OUT, "PLACEHOLDER")
+          }
 
       # ── 7. Build Next.js frontend (standalone) ────────────────────────────
       - name: Build Next.js frontend
@@ -150,7 +173,6 @@ jobs:
           NEXT_PUBLIC_API_URL: "http://127.0.0.1:8000"
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           npm install
           npx next build
@@ -163,10 +185,17 @@ jobs:
             Write-Host "standalone MISSING — next.config output may not be set"
             exit 1
           }
-          # Copy standalone output to vendor/frontend
+          # Next.js 15+ places standalone output in a subdirectory named after
+          # the project (babyAI/); fall back to root if the old layout is used.
+          $standaloneRoot = if (Test-Path ".next\standalone\babyAI") {
+            ".next\standalone\babyAI"
+          } else {
+            ".next\standalone"
+          }
+          Write-Host "Copying standalone from: $standaloneRoot"
           New-Item -ItemType Directory -Force -Path "..\vendor\frontend" | Out-Null
-          Copy-Item ".next\standalone\*" "..\vendor\frontend" -Recurse -Force
-          Copy-Item ".next\static"       "..\vendor\frontend\.next\static" -Recurse -Force
+          Copy-Item "$standaloneRoot\*" "..\vendor\frontend" -Recurse -Force
+          Copy-Item ".next\static"      "..\vendor\frontend\.next\static" -Recurse -Force
           if (Test-Path "public") {
             Copy-Item "public" "..\vendor\frontend\public" -Recurse -Force
           }
@@ -176,8 +205,8 @@ jobs:
       - name: Freeze Python backend
         shell: pwsh
         run: |
-          pip install -r babyAI-backend/requirements.txt
-          pip install pyinstaller
+          pip install --retries 10 --timeout 60 -r babyAI-backend/requirements.txt
+          pip install --retries 10 --timeout 60 pyinstaller
 
           # Copy backend source entirely to C: so all paths stay on one drive
           Copy-Item "$PWD\babyAI-backend" "C:\babyai-src" -Recurse -Force
@@ -209,6 +238,12 @@ jobs:
             --hidden-import sklearn.tree._utils `
             --hidden-import sklearn.utils._weight_vector `
             --collect-all sklearn `
+            --copy-metadata scikit-learn `
+            --collect-all scipy.stats `
+            --collect-all scipy.special `
+            --collect-all scipy._lib `
+            --collect-all joblib `
+            --collect-all threadpoolctl `
             --collect-all fastapi `
             --collect-all starlette `
             --collect-all api `
@@ -217,14 +252,40 @@ jobs:
             --collect-data certifi `
             --hidden-import ssl `
             --hidden-import certifi `
+            --hidden-import multipart `
+            --collect-all multipart `
+            --collect-all reportlab `
+            --collect-all xgboost `
             "run.py"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
           # Copy output back to D: workspace
           New-Item -ItemType Directory -Force -Path "D:\a\babyai-desktop\babyai-desktop\vendor\backend" | Out-Null
           Copy-Item "C:\babyai-dist\api.exe" "D:\a\babyai-desktop\babyai-desktop\vendor\backend\api.exe" -Force
           Write-Host "Backend frozen"
 
-      # ── 9. Install Electron deps & build installer ────────────────────────
+      # ── 9. Write .env so it gets bundled via extraResources ──────────────────
+      - name: Write .env for packaging
+        shell: pwsh
+        env:
+          SUPABASE_URL:           ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY:      ${{ secrets.SUPABASE_ANON_KEY }}
+          MAIL_RELAY_SECRET:      ${{ secrets.MAIL_RELAY_SECRET }}
+        run: |
+          "SUPABASE_URL=$env:SUPABASE_URL" | Out-File -FilePath ".env" -Encoding UTF8
+          "SUPABASE_ANON_KEY=$env:SUPABASE_ANON_KEY" | Add-Content -Path ".env" -Encoding UTF8
+          "MAIL_RELAY_SECRET=$env:MAIL_RELAY_SECRET" | Add-Content -Path ".env" -Encoding UTF8
+          Write-Host ".env written"
+
+      # ── 10. Install Electron deps & build installer ───────────────────────
+      - name: Exclude workspace from Windows Defender
+        shell: pwsh
+        run: |
+          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE"
+          Add-MpPreference -ExclusionPath "$env:TEMP"
+          Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\electron-builder"
+          Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\electron"
+
       - name: Install Electron dependencies
         run: npm install
 
