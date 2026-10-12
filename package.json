@@ -63,6 +63,13 @@
       {
         "from": "vendor/vc_redist.x64.exe",
         "to": "vc_redist.x64.exe"
+      },
+      {
+        "from": "vendor/diagnostics",
+        "to": "diagnostics",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {

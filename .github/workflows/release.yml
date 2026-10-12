@@ -165,6 +165,15 @@ jobs:
           }
 
       # ── 7. Build Next.js frontend (standalone) ────────────────────────────
+      # Support tool: BUSY structure probe (lives in the backend repo).
+      # Lands in <install>\resources\diagnostics\busy_structure_probe.sql.
+      - name: Bundle diagnostics
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "vendor\diagnostics" | Out-Null
+          Copy-Item "babyAI-backend\scripts\busy_structure_probe.sql" "vendor\diagnostics\" -Force
+          Get-ChildItem vendor\diagnostics | Format-Table Name, Length
+
       - name: Build Next.js frontend
         working-directory: babyAI
         shell: pwsh
