@@ -17,6 +17,23 @@ jobs:
       - name: Checkout babyAI-desktop
         uses: actions/checkout@v4
 
+      # Real-time scanning of every file npm, pip, PyInstaller and
+      # electron-builder write was a large share of build time. Done first
+      # (it used to run just before the Electron step) so all steps skip it.
+      - name: Exclude build folders from Windows Defender
+        shell: pwsh
+        run: |
+          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE"
+          Add-MpPreference -ExclusionPath "$env:TEMP"
+          Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\electron-builder"
+          Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\electron"
+          Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\pip"
+          Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\npm-cache"
+          Add-MpPreference -ExclusionPath "C:\babyai-src"
+          Add-MpPreference -ExclusionPath "C:\babyai-work"
+          Add-MpPreference -ExclusionPath "C:\babyai-dist"
+          Add-MpPreference -ExclusionPath "C:\hostedtoolcache"
+
       # ── 2. Checkout frontend (babyAI) ─────────────────────────────────────
       - name: Checkout babyAI frontend
         uses: actions/checkout@v4
@@ -40,15 +57,32 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          # Reuse downloaded npm packages between releases (frontend + Electron)
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            babyAI/package-lock.json
 
       # ── 5. Set up Python for PyInstaller ──────────────────────────────────
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          # Reuse downloaded wheels between releases; refreshed when
+          # requirements.txt changes
+          cache: pip
+          cache-dependency-path: babyAI-backend/requirements.txt
 
       # ── 6a. Download portable Node.js binary ─────────────────────────────
+      - name: Cache portable Node.js
+        id: cache-node
+        uses: actions/cache@v4
+        with:
+          path: vendor/node
+          key: portable-node-20.14.0-win-x64
+
       - name: Download portable Node.js
+        if: steps.cache-node.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $NODE_VERSION = "20.14.0"
@@ -62,7 +96,15 @@ jobs:
           Write-Host "Node.js binary ready"
 
       # ── 6b. Download portable Postgres binaries ───────────────────────────
+      - name: Cache portable PostgreSQL
+        id: cache-pg
+        uses: actions/cache@v4
+        with:
+          path: vendor/postgres
+          key: portable-postgres-16.2-1-slim-v1
+
       - name: Download portable PostgreSQL
+        if: steps.cache-pg.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $PG_VERSION = "16.2-1"
@@ -173,6 +215,15 @@ jobs:
           New-Item -ItemType Directory -Force -Path "vendor\diagnostics" | Out-Null
           Copy-Item "babyAI-backend\scripts\busy_structure_probe.sql" "vendor\diagnostics\" -Force
           Get-ChildItem vendor\diagnostics | Format-Table Name, Length
+
+      # Next.js incremental build cache: unchanged pages/modules are reused.
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: babyAI/.next/cache
+          key: nextjs-${{ hashFiles('babyAI/package-lock.json') }}-${{ hashFiles('babyAI/app/**', 'babyAI/lib/**', 'babyAI/components/**') }}
+          restore-keys: |
+            nextjs-${{ hashFiles('babyAI/package-lock.json') }}-
 
       - name: Build Next.js frontend
         working-directory: babyAI
@@ -287,13 +338,15 @@ jobs:
           Write-Host ".env written"
 
       # ── 10. Install Electron deps & build installer ───────────────────────
-      - name: Exclude workspace from Windows Defender
-        shell: pwsh
-        run: |
-          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE"
-          Add-MpPreference -ExclusionPath "$env:TEMP"
-          Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\electron-builder"
-          Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\electron"
+      - name: Cache Electron binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-
 
       - name: Install Electron dependencies
         run: npm install
