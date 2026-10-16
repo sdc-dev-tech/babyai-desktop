@@ -1,7 +1,16 @@
 name: Build & Release Windows Installer
 
+# Releases run from the `release` branch: push the commit there
+# (git push origin HEAD:release) and the workflow tags v<package.json version>
+# and publishes. Every run then shares one cache scope — GitHub only restores
+# caches saved on the same ref (or the default branch), and each new tag is
+# a new ref, so tag-triggered runs never reused a single cache (PostgreSQL,
+# pip, npm, Electron and Next.js were re-downloaded/rebuilt on every
+# release). Pushing a v* tag still works as a fallback.
 on:
   push:
+    branches:
+      - release
     tags:
       - "v*"
 
@@ -51,6 +60,14 @@ jobs:
           token: ${{ secrets.GH_PAT }}
           path: babyAI-backend
           ref: communications-be
+
+      - name: Read version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json | ConvertFrom-Json).version
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Releasing v$v"
 
       # ── 4. Set up Node for Electron + Next.js ─────────────────────────────
       - name: Set up Node 20
@@ -262,6 +279,15 @@ jobs:
           Write-Host "Frontend built"
 
       # ── 8. Freeze Python backend with PyInstaller ─────────────────────────
+      # PyInstaller's own cache of analysed/stripped dependency binaries.
+      - name: Cache PyInstaller
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\pyinstaller
+          key: pyinstaller-${{ hashFiles('babyAI-backend/requirements.txt') }}
+          restore-keys: |
+            pyinstaller-
+
       - name: Freeze Python backend
         shell: pwsh
         run: |
@@ -368,6 +394,9 @@ jobs:
       - name: Upload installer to Release
         uses: softprops/action-gh-release@v2
         with:
+          # Branch runs create the tag on this commit; tag runs reuse theirs.
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', steps.ver.outputs.version) }}
+          target_commitish: ${{ github.sha }}
           files: dist/babyAI-Setup-*.exe
           generate_release_notes: true
           fail_on_unmatched_files: true
